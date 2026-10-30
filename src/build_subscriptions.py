@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Build compact, protocol-separated Base64 subscriptions from @SOSkeyNET."""
+"""Build protocol-separated Base64 subscriptions and a Mihomo/Clash YAML config."""
 from __future__ import annotations
 
 import base64
+import json
 import re
 import time
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -17,16 +19,12 @@ OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 100
 TIMEOUT = 25
-
-# Generic http(s) links are deliberately excluded: they caused ordinary web
-# links to be mistaken for proxy configurations and inflated the old list.
 SCHEMES = (
     "vless", "vmess", "trojan", "ss", "ssr",
     "hysteria", "hysteria2", "tuic", "wireguard", "socks",
 )
-URI_RE = re.compile(
-    r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\S+"
-)
+CLASH_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks"}
+URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\S+")
 TRAILING = ".,;!)]}،؛" + chr(34) + chr(39)
 
 
@@ -40,17 +38,14 @@ def protocol_of(uri: str) -> str | None:
 
 
 def plausible_uri(uri: str) -> bool:
-    """Reject obvious text fragments and malformed links without probing them."""
     if len(uri) < 12 or any(ch.isspace() for ch in uri):
         return False
     scheme, payload = uri.split("://", 1)
     if not payload or payload.startswith(("/", "?", "#")):
         return False
     if scheme.lower() == "vmess":
-        # VMess links carry a base64-encoded JSON document.
         try:
-            padded = payload + "=" * (-len(payload) % 4)
-            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+            decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)).decode("utf-8")
             return decoded.lstrip().startswith("{") and '"add"' in decoded and '"port"' in decoded
         except (ValueError, UnicodeError):
             return False
@@ -72,12 +67,177 @@ def to_base64(items: list[str]) -> str:
     return encoded + ("\n" if encoded else "")
 
 
+def decode_b64(value: str) -> str:
+    value += "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value.encode("ascii")).decode("utf-8")
+
+
+def node_name(uri: str, host: str) -> str:
+    fragment = urlsplit(uri).fragment
+    name = unquote(fragment).strip() if fragment else host
+    return (name or host or "proxy")[:80]
+
+
+def query_options(parts):
+    return {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
+
+
+def add_transport(node: dict, q: dict, default_network: str = "tcp") -> None:
+    network = q.get("type", default_network).lower()
+    if network in {"ws", "grpc", "http", "h2"}:
+        node["network"] = network
+    if network == "ws":
+        opts = {"path": q.get("path", "/")}
+        if q.get("host"):
+            opts["headers"] = {"Host": q["host"]}
+        node["ws-opts"] = opts
+    elif network == "grpc":
+        node["grpc-opts"] = {"grpc-service-name": q.get("serviceName", q.get("service-name", ""))}
+
+
+def parse_ss(uri: str) -> dict | None:
+    parts = urlsplit(uri)
+    payload = parts.netloc
+    if "@" not in payload:
+        try:
+            decoded = decode_b64(payload.split("#", 1)[0])
+            if "@" not in decoded:
+                return None
+            payload = decoded
+        except Exception:
+            return None
+    userinfo, server = payload.rsplit("@", 1)
+    if ":" not in server:
+        return None
+    host, port_text = server.rsplit(":", 1)
+    try:
+        port = int(port_text)
+    except ValueError:
+        return None
+    if ":" not in userinfo:
+        try:
+            userinfo = decode_b64(userinfo)
+        except Exception:
+            return None
+    method, password = userinfo.split(":", 1)
+    node = {"name": node_name(uri, host), "type": "ss", "server": host.strip("[]"),
+            "port": port, "cipher": method, "password": password}
+    q = query_options(parts)
+    if q.get("plugin"):
+        node["plugin"] = q["plugin"].split(";", 1)[0]
+        plugin_opts = q["plugin"].split(";", 1)
+        if len(plugin_opts) > 1:
+            node["plugin-opts"] = {"mode": "websocket"} if "mode=websocket" in plugin_opts[1] else {}
+    return node
+
+
+def uri_to_clash(uri: str) -> dict | None:
+    scheme = protocol_of(uri)
+    if scheme not in CLASH_SCHEMES:
+        return None
+    if scheme == "vmess":
+        try:
+            data = json.loads(decode_b64(uri.split("://", 1)[1].split("#", 1)[0]))
+            host, port = data.get("add"), int(data.get("port"))
+            if not host:
+                return None
+            node = {"name": node_name(uri, host), "type": "vmess", "server": host,
+                    "port": port, "uuid": data.get("id", ""), "alterId": int(data.get("aid", 0)),
+                    "cipher": data.get("scy") or "auto", "tls": str(data.get("tls", "")).lower() in {"tls", "true"}}
+            network = data.get("net", "tcp")
+            add_transport(node, {"type": network, "path": data.get("path", ""),
+                                 "host": data.get("host", ""), "serviceName": data.get("path", "")})
+            if data.get("sni"):
+                node["servername"] = data["sni"]
+            if data.get("fp"):
+                node["client-fingerprint"] = data["fp"]
+            return node
+        except (ValueError, TypeError, KeyError, UnicodeError):
+            return None
+    if scheme == "ss":
+        return parse_ss(uri)
+
+    parts = urlsplit(uri)
+    host = parts.hostname
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    if not host or not port:
+        return None
+    q = query_options(parts)
+    user = unquote(parts.username or "")
+    password = unquote(parts.password or "")
+    name = node_name(uri, host)
+
+    if scheme == "socks":
+        node = {"name": name, "type": "socks5", "server": host, "port": port}
+        if user:
+            node.update({"username": user, "password": password})
+        return node
+    if scheme == "vless":
+        node = {"name": name, "type": "vless", "server": host, "port": port,
+                "uuid": user, "network": q.get("type", "tcp"),
+                "tls": q.get("security", "") in {"tls", "reality"}}
+        add_transport(node, q)
+        if q.get("sni"):
+            node["servername"] = q["sni"]
+        if q.get("alpn"):
+            node["alpn"] = q["alpn"].split(",")
+        if q.get("fp"):
+            node["client-fingerprint"] = q["fp"]
+        if q.get("security") == "reality":
+            node["tls"] = True
+            node["reality-opts"] = {"public-key": q.get("pbk", ""), "short-id": q.get("sid", "")}
+        if q.get("flow"):
+            node["flow"] = q["flow"]
+        return node
+    if scheme == "trojan":
+        node = {"name": name, "type": "trojan", "server": host, "port": port, "password": user,
+                "sni": q.get("sni", host), "udp": True}
+        add_transport(node, q)
+        if q.get("fp"):
+            node["client-fingerprint"] = q["fp"]
+        return node
+    if scheme in {"hysteria", "hysteria2"}:
+        node = {"name": name, "type": scheme, "server": host, "port": port}
+        if scheme == "hysteria2":
+            node["password"] = user or password
+        else:
+            node["auth"] = q.get("auth", user or password)
+            if q.get("obfs"):
+                node["obfs"] = q["obfs"]
+            if q.get("obfsParam"):
+                node["obfs-password"] = q["obfsParam"]
+        if q.get("sni"):
+            node["sni"] = q["sni"]
+        if q.get("insecure") == "1":
+            node["skip-cert-verify"] = True
+        if q.get("obfs"):
+            node["obfs"] = q["obfs"]
+        if q.get("obfs-password"):
+            node["obfs-password"] = q["obfs-password"]
+        if q.get("upmbps"):
+            node["up"] = int(q["upmbps"])
+        if q.get("downmbps"):
+            node["down"] = int(q["downmbps"])
+        return node
+    if scheme == "tuic":
+        node = {"name": name, "type": "tuic", "server": host, "port": port,
+                "uuid": user, "password": password, "udp": True,
+                "congestion-controller": q.get("congestion_control", "bbr"),
+                "sni": q.get("sni", host), "skip-cert-verify": q.get("allowInsecure") == "1"}
+        if q.get("alpn"):
+            node["alpn"] = q["alpn"].split(",")
+        return node
+    return None
+
+
 def fetch_page(session: requests.Session, before: int | None = None) -> tuple[str, list[int]]:
     params = {"before": before} if before else None
     response = session.get(BASE_URL, params=params, timeout=TIMEOUT)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
-
     chunks: list[str] = []
     message_ids: list[int] = []
     for node in soup.select(".tgme_widget_message"):
@@ -87,23 +247,17 @@ def fetch_page(session: requests.Session, before: int | None = None) -> tuple[st
         text_node = node.select_one(".tgme_widget_message_text")
         if text_node:
             chunks.append(text_node.get_text(" ", strip=True))
-        # Telegram sometimes stores a proxy URI as an anchor href.
         for anchor in node.select("a[href]"):
             href = anchor.get("href", "")
             if re.match(r"(?i)^(?:" + "|".join(SCHEMES) + r")://", href):
                 chunks.append(href)
-
     return "\n".join(chunks), message_ids
 
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (compatible; soskeynet-sub/1.1; +https://github.com/ghafas/soskeynet-sub)"
-    })
-
-    # Keep first-seen entries: Telegram preview pages are traversed newest first.
+    session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; soskeynet-sub/1.2; +https://github.com/ghafas/soskeynet-sub)"})
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     before = None
@@ -114,7 +268,6 @@ def main() -> None:
         except requests.RequestException as exc:
             print(f"Fetch stopped after {pages} pages: {exc}")
             break
-
         pages += 1
         for raw_uri in URI_RE.findall(page_text):
             uri = clean_uri(raw_uri)
@@ -125,7 +278,6 @@ def main() -> None:
                 continue
             seen[protocol].add(uri)
             found[protocol].append(uri)
-
         if not ids:
             break
         oldest = min(ids)
@@ -134,40 +286,64 @@ def main() -> None:
         before = oldest
         time.sleep(0.35)
 
-    # One Base64 subscription per protocol, plus a compact combined list.
     for protocol in SCHEMES:
-        (OUTPUT_DIR / f"{protocol}.txt").write_text(
-            to_base64(found.get(protocol, [])), encoding="ascii"
-        )
-
+        (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
     combined = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
     (OUTPUT_DIR / "all.txt").write_text(to_base64(combined), encoding="ascii")
-
-    # No proxy is labelled tested until a real tunnel + data-transfer test exists.
     (OUTPUT_DIR / "tested.txt").write_text("", encoding="ascii")
 
-    links = "\n".join(
-        f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>'
-        for p in SCHEMES
-    )
+    clash_nodes = []
+    clash_seen = set()
+    clash_skipped = defaultdict(int)
+    for protocol in SCHEMES:
+        for uri in found.get(protocol, []):
+            node = uri_to_clash(uri)
+            if node is None:
+                clash_skipped[protocol] += 1
+                continue
+            key = (node.get("type"), node.get("server"), node.get("port"), node.get("name"))
+            if key in clash_seen:
+                continue
+            clash_seen.add(key)
+            clash_nodes.append(node)
+
+    clash_config = {
+        "mixed-port": 7890,
+        "allow-lan": False,
+        "mode": "rule",
+        "log-level": "warning",
+        "ipv6": True,
+        "proxies": clash_nodes,
+        "proxy-groups": [
+            {"name": "PROXY", "type": "select", "proxies": ["AUTO"] + [n["name"] for n in clash_nodes]},
+            {"name": "AUTO", "type": "url-test", "url": "https://www.gstatic.com/generate_204",
+             "interval": 300, "tolerance": 100, "proxies": [n["name"] for n in clash_nodes]},
+        ] if clash_nodes else [],
+        "rules": ["MATCH,PROXY"] if clash_nodes else [],
+    }
+    # JSON is a valid YAML 1.2 document; this avoids unsafe hand-built YAML quoting.
+    (OUTPUT_DIR / "clash.yaml").write_text(json.dumps(clash_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    links = "\n".join(f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>' for p in SCHEMES)
     (OUTPUT_DIR / "index.html").write_text(
         f"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>SOSkeyNET subscriptions</title>
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
 <h1>SOSkeyNET subscriptions</h1>
-<p>Latest unique configurations, separated by protocol. Maximum {MAX_PER_PROTOCOL} per protocol.</p>
+<p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols ({len(combined)})</a>
+<a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
 <p>Source: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a></p>
-</html>""",
-        encoding="utf-8",
-    )
+</html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
+    skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
     print(f"Scanned {pages} pages; kept {len(combined)} valid unique URIs (cap {MAX_PER_PROTOCOL}/protocol).")
     print(counts)
-    print("Wrote protocol-specific Base64 files, public/all.txt and empty public/tested.txt.")
+    print(f"Clash/Mihomo nodes: {len(clash_nodes)}; skipped unsupported/unparsed: {skipped or 'none'}.")
+    print("Wrote protocol Base64 files, all.txt, clash.yaml and empty tested.txt.")
 
 
 if __name__ == "__main__":
