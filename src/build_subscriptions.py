@@ -373,6 +373,7 @@ def main() -> None:
 
     clash_nodes = []
     clash_seen = set()
+    clash_names = set()
     clash_skipped = defaultdict(int)
     for protocol in SCHEMES:
         for uri in found.get(protocol, []):
@@ -384,6 +385,15 @@ def main() -> None:
             if key in clash_seen:
                 continue
             clash_seen.add(key)
+            # Clash/Mihomo requires proxy names to be unique across the whole list.
+            base_name = str(node.get("name") or node.get("server") or "proxy")
+            unique_name = base_name
+            suffix = 2
+            while unique_name in clash_names:
+                unique_name = f"{base_name}-{suffix}"
+                suffix += 1
+            node["name"] = unique_name
+            clash_names.add(unique_name)
             clash_nodes.append(node)
 
     clash_config = {
