@@ -122,12 +122,33 @@ def parse_ss(uri: str) -> dict | None:
             userinfo = decode_b64(userinfo)
         except Exception:
             return None
+    userinfo = unquote(userinfo)
     method, password = userinfo.split(":", 1)
     method = method.strip().lower()
+    password = password.strip()
     # Never rename a cipher to a different algorithm. Unsupported methods are
     # excluded so one bad SS entry cannot invalidate the entire Clash profile.
     if method not in SUPPORTED_SS_CIPHERS or not password:
         return None
+    # SIP002/SS2022 keys must be valid Base64. Some feeds use Base64URL
+    # (- and _) instead of standard Base64 (+ and /); normalize that alphabet
+    # and padding, then verify the exact key size required by the cipher.
+    ss2022_key_sizes = {
+        "2022-blake3-aes-128-gcm": 16,
+        "2022-blake3-aes-256-gcm": 32,
+        "2022-blake3-chacha20-poly1305": 32,
+    }
+    if method in ss2022_key_sizes:
+        try:
+            key_text = password.replace("-", "+").replace("_", "/")
+            key_bytes = base64.b64decode(
+                key_text + "=" * (-len(key_text) % 4), validate=True
+            )
+        except (ValueError, base64.binascii.Error):
+            return None
+        if len(key_bytes) != ss2022_key_sizes[method]:
+            return None
+        password = base64.b64encode(key_bytes).decode("ascii")
     if not host.strip("[]") or not (1 <= port <= 65535):
         return None
     q = query_options(parts)
