@@ -411,7 +411,7 @@ def main() -> None:
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
 <h1>SOSkeyNET subscriptions</h1>
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
-<a href="all.txt">ALL protocols ({len(combined)})</a>\n<a href="clash.yaml">Clash / Mihomo YAML ({clash_count} compatible proxies)</a>
+<a href="all.txt">ALL protocols ({len(combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
