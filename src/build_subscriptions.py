@@ -24,6 +24,8 @@ SCHEMES = (
     "hysteria", "hysteria2", "tuic", "wireguard", "socks",
 )
 CLASH_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks"}
+# Mihomo-supported Shadowsocks methods; never silently rename a cipher.
+SUPPORTED_SS_CIPHERS = set("""aes-128-ctr aes-192-ctr aes-256-ctr aes-128-cfb aes-192-cfb aes-256-cfb aes-128-gcm aes-192-gcm aes-256-gcm aes-128-ccm aes-192-ccm aes-256-ccm aes-128-gcm-siv aes-256-gcm-siv chacha20-ietf chacha20 xchacha20 chacha20-ietf-poly1305 xchacha20-ietf-poly1305 chacha8-ietf-poly1305 xchacha8-ietf-poly1305 2022-blake3-aes-128-gcm 2022-blake3-aes-256-gcm 2022-blake3-chacha20-poly1305 lea-128-gcm lea-192-gcm lea-256-gcm rabbit128-poly1305 aegis-128l aegis-256 aez-384 deoxys-ii-256-128 rc4-md5 none""".split())
 URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\S+")
 TRAILING = ".,;!)]}،؛" + chr(34) + chr(39)
 
@@ -120,15 +122,20 @@ def parse_ss(uri: str) -> dict | None:
         except Exception:
             return None
     method, password = userinfo.split(":", 1)
-    node = {"name": node_name(uri, host), "type": "ss", "server": host.strip("[]"),
-            "port": port, "cipher": method, "password": password}
+    method = method.strip().lower()
+    # Never rename a cipher to a different algorithm. Unsupported methods are
+    # excluded so one bad SS entry cannot invalidate the entire Clash profile.
+    if method not in SUPPORTED_SS_CIPHERS or not password:
+        return None
+    if not host.strip("[]") or not (1 <= port <= 65535):
+        return None
     q = query_options(parts)
+    # Plugin URI syntaxes differ between clients. Skip plugin nodes until they
+    # can be translated completely rather than emit a broken partial config.
     if q.get("plugin"):
-        node["plugin"] = q["plugin"].split(";", 1)[0]
-        plugin_opts = q["plugin"].split(";", 1)
-        if len(plugin_opts) > 1:
-            node["plugin-opts"] = {"mode": "websocket"} if "mode=websocket" in plugin_opts[1] else {}
-    return node
+        return None
+    return {"name": node_name(uri, host), "type": "ss", "server": host.strip("[]"),
+            "port": port, "cipher": method, "password": password, "udp": True}
 
 
 def uri_to_clash(uri: str) -> dict | None:
