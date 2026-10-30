@@ -21,7 +21,7 @@ SCHEMES = (
     "hysteria", "hysteria2", "tuic", "wireguard", "socks", "http",
 )
 URI_RE = re.compile(
-    r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://[^\s<>\\"']+"
+    r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\S+"
 )
 
 
