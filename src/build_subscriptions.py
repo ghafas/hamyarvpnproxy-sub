@@ -254,6 +254,85 @@ def fetch_page(session: requests.Session, before: int | None = None) -> tuple[st
     return "\n".join(chunks), message_ids
 
 
+def clash_proxy(uri: str, index: int) -> dict | None:
+    p = urlsplit(uri); q = parse_qs(p.query); scheme = p.scheme.lower()
+    name = unquote(p.fragment) if p.fragment else f'{scheme}-{index}'
+    host, port = p.hostname, p.port
+    if not host or not port: return None
+    def val(k, default=''): return unquote(q.get(k, [default])[0])
+    sni = val('sni', val('servername', host)); network = val('type', 'tcp').lower()
+    if scheme == 'vmess':
+        try:
+            raw = p.netloc + p.path; raw += '=' * (-len(raw) % 4)
+            d = json.loads(base64.urlsafe_b64decode(raw).decode())
+            n = {'name': name, 'type': 'vmess', 'server': d['add'], 'port': int(d['port']), 'uuid': d['id'], 'alterId': int(d.get('aid', 0)), 'cipher': d.get('scy', 'auto'), 'udp': True}
+            net = d.get('net', 'tcp')
+            if net != 'tcp': n['network'] = net
+            if d.get('tls') == 'tls': n.update({'tls': True, 'servername': d.get('sni') or d.get('host') or d['add'], 'client-fingerprint': d.get('fp', 'chrome')})
+            if net == 'ws':
+                n['ws-opts'] = {'path': d.get('path') or '/'}
+                if d.get('host'): n['ws-opts']['headers'] = {'Host': d['host']}
+            if net == 'grpc': n['grpc-opts'] = {'grpc-service-name': d.get('path', '')}
+            return n
+        except (ValueError, KeyError, TypeError, UnicodeError): return None
+    if scheme == 'vless':
+        n = {'name': name, 'type': 'vless', 'server': host, 'port': port, 'uuid': unquote(p.username or ''), 'udp': True}
+        security = val('security', val('tls'))
+        if security in ('tls', 'reality'):
+            n.update({'tls': True, 'servername': sni, 'client-fingerprint': val('fp', 'chrome')})
+            if security == 'reality' or val('pbk'): n['reality-opts'] = {'public-key': val('pbk'), 'short-id': val('sid')}
+        if val('flow'): n['flow'] = val('flow')
+        if network == 'ws':
+            n.update({'network': 'ws', 'ws-opts': {'path': val('path', '/')}})
+            if val('host'): n['ws-opts']['headers'] = {'Host': val('host')}
+        elif network == 'grpc': n.update({'network': 'grpc', 'grpc-opts': {'grpc-service-name': val('serviceName')}})
+        return n
+    if scheme == 'trojan':
+        n = {'name': name, 'type': 'trojan', 'server': host, 'port': port, 'password': unquote(p.username or ''), 'sni': sni, 'udp': True}
+        if val('allowInsecure') in ('1', 'true'): n['skip-cert-verify'] = True
+        if network == 'ws':
+            n.update({'network': 'ws', 'ws-opts': {'path': val('path', '/')}})
+            if val('host'): n['ws-opts']['headers'] = {'Host': val('host')}
+        return n
+    if scheme == 'ss':
+        try:
+            user = unquote(p.username or '')
+            if not user:
+                raw = p.netloc.split('#')[0]; raw += '=' * (-len(raw) % 4)
+                decoded = base64.urlsafe_b64decode(raw).decode(); auth, addr = decoded.rsplit('@', 1)
+            else: auth, addr = user, f'{host}:{port}'
+            if ':' not in auth: auth += ':' + base64.urlsafe_b64decode(auth + '=' * (-len(auth) % 4)).decode().split(':', 1)[1]
+            method, password = auth.split(':', 1); sh, sp = addr.rsplit(':', 1)
+            return {'name': name, 'type': 'ss', 'server': sh.strip('[]'), 'port': int(sp), 'cipher': method, 'password': password, 'udp': True}
+        except (ValueError, UnicodeError, TypeError): return None
+    if scheme == 'hysteria2':
+        return {'name': name, 'type': 'hysteria2', 'server': host, 'port': port, 'password': unquote(p.username or ''), 'sni': sni, 'skip-cert-verify': val('insecure') == '1', 'udp': True}
+    if scheme == 'hysteria':
+        return {'name': name, 'type': 'hysteria', 'server': host, 'port': port, 'auth': unquote(p.username or ''), 'sni': sni, 'skip-cert-verify': val('insecure') == '1', 'udp': True}
+    if scheme == 'tuic':
+        return {'name': name, 'type': 'tuic', 'server': host, 'port': port, 'uuid': unquote(p.username or ''), 'password': unquote(p.password or ''), 'sni': sni, 'congestion-controller': val('congestion_control', 'bbr'), 'udp': True}
+    if scheme == 'socks':
+        n = {'name': name, 'type': 'socks5', 'server': host, 'port': port, 'udp': True}
+        if p.username is not None: n['username'] = unquote(p.username)
+        if p.password is not None: n['password'] = unquote(p.password)
+        return n
+    return None
+
+def make_clash(items: list[str]) -> tuple[str, int]:
+    nodes = []; used = set()
+    for i, uri in enumerate(items, 1):
+        node = clash_proxy(uri, i)
+        if not node: continue
+        base = node['name']; name = base; j = 2
+        while name in used: name = f'{base}-{j}'; j += 1
+        node['name'] = name; used.add(name); nodes.append(node)
+    names = [n['name'] for n in nodes]
+    cfg = {'mixed-port': 7890, 'allow-lan': False, 'mode': 'rule', 'log-level': 'info', 'proxies': nodes,
+           'proxy-groups': [{'name': 'PROXY', 'type': 'select', 'proxies': ['AUTO', 'DIRECT']},
+                            {'name': 'AUTO', 'type': 'url-test', 'proxies': names, 'url': 'https://www.gstatic.com/generate_204', 'interval': 300, 'tolerance': 100}],
+           'rules': ['MATCH,PROXY']}
+    return yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), len(nodes)
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
@@ -332,7 +411,7 @@ def main() -> None:
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
 <h1>SOSkeyNET subscriptions</h1>
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
-<a href="all.txt">ALL protocols ({len(combined)})</a>
+<a href="all.txt">ALL protocols ({len(combined)})</a>\n<a href="clash.yaml">Clash / Mihomo YAML ({clash_count} compatible proxies)</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
