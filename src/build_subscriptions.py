@@ -25,9 +25,9 @@ SCHEMES = (
     "hysteria", "hysteria2", "tuic", "wireguard", "socks",
 )
 URI_RE = re.compile(
-    r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://[^\s<>\\"']+"
+    r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\\S+"
 )
-TRAILING = ".,;!)]}،؛\"'"
+TRAILING = ".,;!)]}،؛" + chr(34) + chr(39)
 
 
 def clean_uri(value: str) -> str:
