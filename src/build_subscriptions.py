@@ -15,7 +15,7 @@ CHANNEL = "SOSkeyNET"
 BASE_URL = f"https://t.me/s/{CHANNEL}"
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
-MAX_PER_PROTOCOL = 50
+MAX_PER_PROTOCOL = 100
 TIMEOUT = 25
 
 # Generic http(s) links are deliberately excluded: they caused ordinary web
