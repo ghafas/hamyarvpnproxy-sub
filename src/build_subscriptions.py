@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import requests
+import yaml
 from bs4 import BeautifulSoup
 
 CHANNEL = "SOSkeyNET"
@@ -384,7 +385,11 @@ def main() -> None:
     clash_skipped = defaultdict(int)
     for protocol in SCHEMES:
         for uri in found.get(protocol, []):
-            node = uri_to_clash(uri)
+            try:
+                node = uri_to_clash(uri)
+            except Exception as exc:
+                print(f"Skipping malformed {protocol} URI: {type(exc).__name__}")
+                node = None
             if node is None:
                 clash_skipped[protocol] += 1
                 continue
@@ -417,8 +422,22 @@ def main() -> None:
         ] if clash_nodes else [],
         "rules": ["MATCH,PROXY"] if clash_nodes else [],
     }
-    # JSON is a valid YAML 1.2 document; this avoids unsafe hand-built YAML quoting.
-    (OUTPUT_DIR / "clash.yaml").write_text(json.dumps(clash_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Validate the final document before publishing. A malformed node or a
+    # dangling group reference must never reach users as a broken subscription.
+    clash_text = json.dumps(clash_config, ensure_ascii=False, indent=2) + "\n"
+    validated = yaml.safe_load(clash_text)
+    proxy_names = [item["name"] for item in validated.get("proxies", [])]
+    if len(proxy_names) != len(set(proxy_names)):
+        raise ValueError("Duplicate proxy names in generated Clash config")
+    known_names = set(proxy_names) | {"DIRECT", "REJECT"}
+    for group in validated.get("proxy-groups", []):
+        missing = set(group.get("proxies", [])) - known_names - {g["name"] for g in validated.get("proxy-groups", [])}
+        if missing:
+            raise ValueError(f"Proxy group {group.get('name')} references missing nodes: {sorted(missing)}")
+    for proxy in validated.get("proxies", []):
+        if proxy.get("type") == "ss" and proxy.get("cipher") not in SUPPORTED_SS_CIPHERS:
+            raise ValueError(f"Unsupported Shadowsocks cipher emitted: {proxy.get('cipher')}")
+    (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
 
     links = "\n".join(f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>' for p in SCHEMES)
     (OUTPUT_DIR / "index.html").write_text(
