@@ -398,6 +398,17 @@ def main() -> None:
         (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
     combined = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
     (OUTPUT_DIR / "all.txt").write_text(to_base64(combined), encoding="ascii")
+    # Narcic Gateway's current ConfigParser supports these URI schemes. Keep
+    # this compatibility feed as plain text: one directly parseable link/line.
+    # TUIC and SSR are omitted because its Protocol enum does not map them.
+    narcic_schemes = {"vless", "vmess", "trojan", "ss", "hysteria",
+                      "hysteria2", "wireguard", "socks"}
+    narcic_links = [uri for protocol in SCHEMES if protocol in narcic_schemes
+                    for uri in found.get(protocol, [])]
+    (OUTPUT_DIR / "narcic.txt").write_text(
+        "\n".join(narcic_links) + ("\n" if narcic_links else ""),
+        encoding="utf-8",
+    )
     (OUTPUT_DIR / "tested.txt").write_text("", encoding="ascii")
 
     clash_nodes = []
