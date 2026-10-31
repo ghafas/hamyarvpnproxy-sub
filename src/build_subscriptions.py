@@ -26,7 +26,7 @@ SCHEMES = (
 CLASH_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks"}
 # Mihomo-supported Shadowsocks methods; never silently rename a cipher.
 SUPPORTED_SS_CIPHERS = set("""aes-128-ctr aes-192-ctr aes-256-ctr aes-128-cfb aes-192-cfb aes-256-cfb aes-128-gcm aes-192-gcm aes-256-gcm aes-128-ccm aes-192-ccm aes-256-ccm aes-128-gcm-siv aes-256-gcm-siv chacha20-ietf chacha20 xchacha20 chacha20-ietf-poly1305 xchacha20-ietf-poly1305 chacha8-ietf-poly1305 xchacha8-ietf-poly1305 2022-blake3-aes-128-gcm 2022-blake3-aes-256-gcm 2022-blake3-chacha20-poly1305 lea-128-gcm lea-192-gcm lea-256-gcm rabbit128-poly1305 aegis-128l aegis-256 aez-384 deoxys-ii-256-128 rc4-md5 none""".split())
-URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://(?:(?!(?:" + "|".join(map(re.escape, SCHEMES)) + r")://)\\S)+")
+URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://(?:(?!(?:" + "|".join(map(re.escape, SCHEMES)) + r")://)\S)+")
 TRAILING = ".,;!)]}،؛" + chr(34) + chr(39)
 
 
