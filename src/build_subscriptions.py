@@ -396,12 +396,23 @@ def main() -> None:
 
     for protocol in SCHEMES:
         (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
-    combined = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
-    (OUTPUT_DIR / "all.txt").write_text(to_base64(combined), encoding="ascii")
-    # Generic plain-text subscription: all collected URI schemes, one per line.
-    # Clients import only the protocols they implement.
+    # Xray-based clients reject legacy Shadowsocks CFB ciphers. Keep the
+    # original SS-only feed intact, but omit CFB nodes from combined feeds so
+    # one unsupported outbound cannot prevent the entire Xray profile starting.
+    XRAY_UNSUPPORTED_SS_CIPHERS = {"aes-128-cfb", "aes-192-cfb", "aes-256-cfb"}
+    xray_safe_combined = []
+    excluded_xray_ss = 0
+    for uri in (uri for protocol in SCHEMES for uri in found.get(protocol, [])):
+        if protocol_of(uri) == "ss":
+            ss_node = parse_ss(uri)
+            if ss_node is None or ss_node.get("cipher") in XRAY_UNSUPPORTED_SS_CIPHERS:
+                excluded_xray_ss += 1
+                continue
+        xray_safe_combined.append(uri)
+    (OUTPUT_DIR / "all.txt").write_text(to_base64(xray_safe_combined), encoding="ascii")
+    # Generic plain-text feed for Xray clients: excludes legacy SS CFB methods.
     (OUTPUT_DIR / "all-plain.txt").write_text(
-        "\n".join(combined) + ("\n" if combined else ""),
+        "\n".join(xray_safe_combined) + ("\n" if xray_safe_combined else ""),
         encoding="utf-8",
     )
     (OUTPUT_DIR / "tested.txt").write_text("", encoding="ascii")
@@ -485,7 +496,8 @@ def main() -> None:
     print(f"Scanned {pages} pages; kept {len(combined)} valid unique URIs (cap {MAX_PER_PROTOCOL}/protocol).")
     print(counts)
     print(f"Clash/Mihomo nodes: {len(clash_nodes)}; skipped unsupported/unparsed: {skipped or 'none'}.")
-    print("Wrote protocol Base64 files, all.txt, all-plain.txt, clash.yaml and empty tested.txt.")
+    print(f"Excluded {excluded_xray_ss} Shadowsocks nodes from Xray-safe combined feeds.")
+    print("Wrote protocol Base64 files, Xray-safe all.txt/all-plain.txt, clash.yaml and empty tested.txt.")
 
 
 if __name__ == "__main__":
