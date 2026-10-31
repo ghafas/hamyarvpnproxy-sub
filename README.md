@@ -5,7 +5,7 @@ Automatically collect proxy links published in the public [@SOSkeyNET](https://t
 ## Subscription links
 
 - All configurations (Base64): https://ghafas.github.io/soskeynet-sub/all.txt
-- Narcic Gateway (plain text, compatible protocols only): https://ghafas.github.io/soskeynet-sub/narcic.txt
+- All configurations (plain text, all collected protocols): https://ghafas.github.io/soskeynet-sub/all-plain.txt
 - **Clash / Mihomo YAML:** https://ghafas.github.io/soskeynet-sub/clash.yaml
 - Real-transfer-tested configurations (Base64): https://ghafas.github.io/soskeynet-sub/tested.txt
 
