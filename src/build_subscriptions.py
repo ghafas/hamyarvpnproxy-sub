@@ -14,7 +14,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-CHANNELS = ("SOSkeyNET", "meliproxyy")
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 100
@@ -274,7 +274,15 @@ def fetch_page(session: requests.Session, channel: str, before: int | None = Non
             message_ids.append(int(match.group(1)))
         text_node = node.select_one(".tgme_widget_message_text")
         if text_node:
+            # Telegram renders inline code as <code> and multiline code blocks
+            # as <pre><code>. Include the regular message text plus explicit
+            # code/pre extraction so proxy URIs inside formatted blocks are
+            # never lost if Telegram changes surrounding markup.
             chunks.append(text_node.get_text(" ", strip=True))
+        for code_node in node.select(".tgme_widget_message_text code, .tgme_widget_message_text pre"):
+            code_text = code_node.get_text("\\n", strip=True)
+            if code_text:
+                chunks.append(code_text)
         for anchor in node.select("a[href]"):
             href = anchor.get("href", "")
             if re.match(r"(?i)^(?:" + "|".join(SCHEMES) + r")://", href):
@@ -505,7 +513,7 @@ def main() -> None:
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
-<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
