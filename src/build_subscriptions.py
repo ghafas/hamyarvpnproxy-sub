@@ -14,7 +14,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys")
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 200
@@ -599,7 +599,7 @@ def main() -> None:
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
-<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
