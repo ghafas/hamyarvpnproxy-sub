@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
-MAX_PER_PROTOCOL = 150
+MAX_PER_PROTOCOL = 200
 TIMEOUT = 25
 SCHEMES = (
     "vless", "vmess", "trojan", "ss", "ssr",
@@ -373,10 +373,13 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; hamyarvpnproxy-sub/1.2; +https://github.com/ghafas/hamyarvpnproxy-sub)"})
-    found: dict[str, list[str]] = defaultdict(list)
-    seen: dict[str, set[str]] = defaultdict(set)
+    # Collect each source independently. A busy first channel must not consume
+    # the global protocol quota before the remaining channels are scanned.
+    per_channel: dict[str, dict[str, list[str]]] = {}
     pages = 0
     for channel in CHANNELS:
+        channel_found: dict[str, list[str]] = defaultdict(list)
+        channel_seen: dict[str, set[str]] = defaultdict(set)
         before = None
         channel_pages = 0
         for _ in range(MAX_PAGES):
@@ -390,12 +393,12 @@ def main() -> None:
             for raw_uri in URI_RE.findall(page_text):
                 uri = clean_uri(raw_uri)
                 protocol = protocol_of(uri)
-                if not protocol or uri in seen[protocol] or not plausible_uri(uri):
+                if not protocol or uri in channel_seen[protocol] or not plausible_uri(uri):
                     continue
-                if len(found[protocol]) >= MAX_PER_PROTOCOL:
+                if len(channel_found[protocol]) >= MAX_PER_PROTOCOL:
                     continue
-                seen[protocol].add(uri)
-                found[protocol].append(uri)
+                channel_seen[protocol].add(uri)
+                channel_found[protocol].append(uri)
             if not ids:
                 break
             oldest = min(ids)
@@ -403,7 +406,33 @@ def main() -> None:
                 break
             before = oldest
             time.sleep(0.35)
-        print(f"Scanned @{channel}: {channel_pages} pages.")
+        per_channel[channel] = channel_found
+        channel_counts = ", ".join(
+            f"{p}={len(channel_found.get(p, []))}" for p in SCHEMES
+            if channel_found.get(p)
+        )
+        print(f"Scanned @{channel}: {channel_pages} pages; {channel_counts or 'no valid configs found'}.")
+
+    # Merge sources fairly in round-robin order, deduplicating globally and
+    # enforcing the final cap only after every channel has been collected.
+    found: dict[str, list[str]] = defaultdict(list)
+    seen: dict[str, set[str]] = defaultdict(set)
+    for protocol in SCHEMES:
+        source_lists = [per_channel[channel].get(protocol, []) for channel in CHANNELS]
+        max_source_count = max((len(items) for items in source_lists), default=0)
+        for index in range(max_source_count):
+            for items in source_lists:
+                if index >= len(items):
+                    continue
+                uri = items[index]
+                if uri in seen[protocol]:
+                    continue
+                seen[protocol].add(uri)
+                found[protocol].append(uri)
+                if len(found[protocol]) >= MAX_PER_PROTOCOL:
+                    break
+            if len(found[protocol]) >= MAX_PER_PROTOCOL:
+                break
 
     for protocol in SCHEMES:
         (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
