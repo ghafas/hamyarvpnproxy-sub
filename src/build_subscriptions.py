@@ -416,6 +416,18 @@ def main() -> None:
         "\n".join(xray_safe_combined) + ("\n" if xray_safe_combined else ""),
         encoding="utf-8",
     )
+    # Separate combined feeds without the Shadowsocks (ss://) protocol.
+    # All other discovered protocols, including SSR, remain available.
+    no_ss_combined = [
+        uri for uri in xray_safe_combined if protocol_of(uri) != "ss"
+    ]
+    (OUTPUT_DIR / "all-no-ss.txt").write_text(
+        to_base64(no_ss_combined), encoding="ascii"
+    )
+    (OUTPUT_DIR / "all-no-ss-plain.txt").write_text(
+        "\n".join(no_ss_combined) + ("\n" if no_ss_combined else ""),
+        encoding="utf-8",
+    )
     (OUTPUT_DIR / "tested.txt").write_text("", encoding="ascii")
 
     clash_nodes = []
@@ -486,7 +498,7 @@ def main() -> None:
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
 <h1>SOSkeyNET subscriptions</h1>
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
-<a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>
+<a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
@@ -498,7 +510,8 @@ def main() -> None:
     print(counts)
     print(f"Clash/Mihomo nodes: {len(clash_nodes)}; skipped unsupported/unparsed: {skipped or 'none'}.")
     print(f"Excluded {excluded_xray_ss} Shadowsocks nodes from Xray-safe combined feeds.")
-    print("Wrote protocol Base64 files, Xray-safe all.txt/all-plain.txt, clash.yaml and empty tested.txt.")
+    print(f"Wrote no-SS combined feeds with {len(no_ss_combined)} configurations.")
+    print("Wrote protocol feeds, combined feeds, Clash YAML and empty tested.txt.")
 
 
 if __name__ == "__main__":
