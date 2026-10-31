@@ -1,6 +1,6 @@
 # HamyarVPNProxy subscriptions
 
-Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), and [@oneclickvpnkeys](https://t.me/oneclickvpnkeys).
+Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), [@oneclickvpnkeys](https://t.me/oneclickvpnkeys), and [@VPNBaz](https://t.me/VPNBaz).
 
 ## Subscription links
 
@@ -34,7 +34,7 @@ To add a new public Telegram channel to the collector:
 2. Find the `CHANNELS` line near the top of the file. It currently looks like this:
 
 ```python
-CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys")
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz")
 ```
 
 3. Add the channel's username inside the parentheses, without `@`, and put it in quotation marks. Separate names with commas. For example, to add `@NewVPNChannel`:
