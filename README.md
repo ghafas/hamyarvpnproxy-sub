@@ -1,20 +1,37 @@
-# SOSkeyNET subscriptions
+# HamyarVPNProxy subscriptions
 
-Automatically collect proxy links published in the public [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy) Telegram channels.
+Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy).
 
 ## Subscription links
 
-- All configurations (Base64): https://ghafas.github.io/soskeynet-sub/all.txt
-- All configurations except Shadowsocks (Base64): https://ghafas.github.io/soskeynet-sub/all-no-ss.txt
-- All configurations except Shadowsocks (plain text): https://ghafas.github.io/soskeynet-sub/all-no-ss-plain.txt
-- All configurations (plain text, all collected protocols): https://ghafas.github.io/soskeynet-sub/all-plain.txt
-- **Clash / Mihomo YAML:** https://ghafas.github.io/soskeynet-sub/clash.yaml
-- Real-transfer-tested configurations (Base64): https://ghafas.github.io/soskeynet-sub/tested.txt
+Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 
-Protocol-specific Base64 subscriptions are linked individually on the [GitHub Pages subscriptions page](https://ghafas.github.io/soskeynet-sub/), including VLESS, VMess, Trojan, Shadowsocks, SSR, Hysteria, Hysteria2, TUIC, WireGuard and SOCKS.
+### Combined subscriptions
+- All supported protocols (Base64): https://ghafas.github.io/hamyarvpnproxy-sub/all.txt
+- All supported protocols (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-plain.txt
+- All protocols except Shadowsocks (Base64): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss.txt
+- All protocols except Shadowsocks (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss-plain.txt
+- Clash / Mihomo configuration: https://ghafas.github.io/hamyarvpnproxy-sub/clash.yaml
+- Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt
 
-The Clash/Mihomo output converts supported VLESS, VMess, Trojan, Shadowsocks, Hysteria, Hysteria2, TUIC and SOCKS links into proxy entries, with PROXY and AUTO groups. WireGuard and SSR are retained in the protocol-specific/raw subscriptions but are not currently converted into Clash nodes.
+### Protocol-specific subscriptions (Base64)
+- [VLESS](https://ghafas.github.io/hamyarvpnproxy-sub/vless.txt)
+- [VMess](https://ghafas.github.io/hamyarvpnproxy-sub/vmess.txt)
+- [Trojan](https://ghafas.github.io/hamyarvpnproxy-sub/trojan.txt)
+- [Shadowsocks](https://ghafas.github.io/hamyarvpnproxy-sub/ss.txt)
+- [ShadowsocksR](https://ghafas.github.io/hamyarvpnproxy-sub/ssr.txt)
+- [Hysteria](https://ghafas.github.io/hamyarvpnproxy-sub/hysteria.txt)
+- [Hysteria2](https://ghafas.github.io/hamyarvpnproxy-sub/hysteria2.txt)
+- [TUIC](https://ghafas.github.io/hamyarvpnproxy-sub/tuic.txt)
+- [WireGuard](https://ghafas.github.io/hamyarvpnproxy-sub/wireguard.txt)
+- [SOCKS](https://ghafas.github.io/hamyarvpnproxy-sub/socks.txt)
 
-The workflow runs every 30 minutes and can also be started manually from **Actions**.
+## Update and compatibility
 
-**Important:** `tested.txt` is intentionally empty until a real proxy tunnel is established and actual data transfer/download speed is measured. The AUTO group performs client-side URL latency checks; this is not a real download-speed benchmark, and availability may differ by network and location.
+GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 100 unique configurations per protocol.
+
+The combined Xray-friendly feeds omit legacy Shadowsocks CFB entries that can prevent some Xray clients from loading the subscription. The dedicated `ss.txt` feed remains available separately. The no-SS feeds remove the `ss://` protocol while retaining other protocols, including SSR.
+
+The Clash/Mihomo YAML is generated from supported protocols. Some protocol URI variants or unsupported Shadowsocks methods may be skipped if they cannot be translated safely.
+
+**Important:** `tested.txt` remains empty until a real proxy tunnel is established and actual data transfer is measured. The Clash/Mihomo AUTO group uses URL latency checks; that is not a real download-speed benchmark. Proxy availability and performance vary by network and location.
