@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
-MAX_PER_PROTOCOL = 100
+MAX_PER_PROTOCOL = 150
 TIMEOUT = 25
 SCHEMES = (
     "vless", "vmess", "trojan", "ss", "ssr",
