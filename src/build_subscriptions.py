@@ -393,11 +393,6 @@ def main() -> None:
             for raw_uri in URI_RE.findall(page_text):
                 uri = clean_uri(raw_uri)
                 protocol = protocol_of(uri)
-                # Keep Shadowsocks only from the original SOSkeyNET source.
-                # The two added channels have SS entries that can interfere with
-                # automatic startup in some Xray-based clients.
-                if protocol == "ss" and channel in {"meliproxyy", "persianvpnhub"}:
-                    continue
                 if not protocol or uri in channel_seen[protocol] or not plausible_uri(uri):
                     continue
                 if len(channel_found[protocol]) >= MAX_PER_PROTOCOL:
