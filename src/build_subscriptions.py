@@ -26,7 +26,7 @@ SCHEMES = (
 CLASH_SCHEMES = {"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks"}
 # Mihomo-supported Shadowsocks methods; never silently rename a cipher.
 SUPPORTED_SS_CIPHERS = set("""aes-128-ctr aes-192-ctr aes-256-ctr aes-128-cfb aes-192-cfb aes-256-cfb aes-128-gcm aes-192-gcm aes-256-gcm aes-128-ccm aes-192-ccm aes-256-ccm aes-128-gcm-siv aes-256-gcm-siv chacha20-ietf chacha20 xchacha20 chacha20-ietf-poly1305 xchacha20-ietf-poly1305 chacha8-ietf-poly1305 xchacha8-ietf-poly1305 2022-blake3-aes-128-gcm 2022-blake3-aes-256-gcm 2022-blake3-chacha20-poly1305 lea-128-gcm lea-192-gcm lea-256-gcm rabbit128-poly1305 aegis-128l aegis-256 aez-384 deoxys-ii-256-128 rc4-md5 none""".split())
-URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://\S+")
+URI_RE = re.compile(r"(?i)(?:" + "|".join(map(re.escape, SCHEMES)) + r")://(?:(?!(?:" + "|".join(map(re.escape, SCHEMES)) + r")://)\\S)+")
 TRAILING = ".,;!)]}،؛" + chr(34) + chr(39)
 
 
@@ -40,26 +40,83 @@ def protocol_of(uri: str) -> str | None:
 
 
 def plausible_uri(uri: str) -> bool:
-    if len(uri) < 12 or any(ch.isspace() for ch in uri):
+    """Strict syntax validation before publishing; never tests live reachability."""
+    if not isinstance(uri, str) or len(uri) < 12 or any(ch.isspace() for ch in uri):
         return False
-    scheme, payload = uri.split("://", 1)
-    if not payload or payload.startswith(("/", "?", "#")):
+    scheme = protocol_of(uri)
+    if not scheme:
         return False
-    if scheme.lower() == "vmess":
+
+    def valid_host_port(host: str | None, port: int | None) -> bool:
+        return bool(host and host.strip("[]") and port is not None and 1 <= port <= 65535)
+
+    def valid_uuid(value: str) -> bool:
         try:
-            decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)).decode("utf-8")
-            return decoded.lstrip().startswith("{") and '"add"' in decoded and '"port"' in decoded
-        except (ValueError, UnicodeError):
+            import uuid
+            return str(uuid.UUID(value)) == value.lower()
+        except (ValueError, AttributeError, TypeError):
             return False
-    if scheme.lower() in {"vless", "trojan", "hysteria", "hysteria2", "tuic"}:
-        authority = payload.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
-        return "@" in authority and ":" in authority.rsplit("@", 1)[-1]
-    if scheme.lower() in {"ss", "ssr"}:
-        return len(payload) >= 16
-    if scheme.lower() == "wireguard":
-        return len(payload) >= 12
-    if scheme.lower() == "socks":
-        return "@" in payload and ":" in payload.rsplit("@", 1)[-1]
+
+    try:
+        if scheme == "vmess":
+            payload = uri.split("://", 1)[1].split("#", 1)[0]
+            data = json.loads(decode_b64(payload))
+            if not isinstance(data, dict):
+                return False
+            if not valid_host_port(str(data.get("add", "")).strip(), int(data.get("port", 0))):
+                return False
+            if not valid_uuid(str(data.get("id", ""))) or int(data.get("aid", 0)) < 0:
+                return False
+            if str(data.get("net", "tcp")).lower() not in {"tcp", "ws", "grpc", "http", "h2", "quic"}:
+                return False
+            return True
+
+        if scheme == "ss":
+            return parse_ss(uri) is not None
+
+        if scheme == "ssr":
+            decoded = decode_b64(uri.split("://", 1)[1].split("#", 1)[0])
+            core = decoded.split("/?", 1)[0]
+            fields = core.split(":")
+            if len(fields) < 6:
+                return False
+            host, port_text, protocol, method, obfs = fields[:5]
+            return valid_host_port(host, int(port_text)) and bool(protocol and method and obfs)
+
+        if scheme == "wireguard":
+            parts = urlsplit(uri)
+            return valid_host_port(parts.hostname, parts.port)
+
+        parts = urlsplit(uri)
+        host, port = parts.hostname, parts.port
+        if not valid_host_port(host, port):
+            return False
+        user, password = unquote(parts.username or ""), unquote(parts.password or "")
+        q = query_options(parts)
+
+        if scheme == "vless":
+            if not valid_uuid(user):
+                return False
+            if q.get("type", "tcp").lower() not in {"tcp", "ws", "grpc", "http", "h2", "quic"}:
+                return False
+            security = q.get("security", "none").lower()
+            if security not in {"none", "tls", "reality"}:
+                return False
+            if security == "reality" and not q.get("pbk"):
+                return False
+            return True
+        if scheme == "trojan":
+            return bool(user)
+        if scheme == "tuic":
+            return valid_uuid(user) and bool(password)
+        if scheme == "hysteria2":
+            return bool(user or password)
+        if scheme == "hysteria":
+            return bool(q.get("auth") or user or password)
+        if scheme == "socks":
+            return True
+    except (ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
+        return False
     return False
 
 
