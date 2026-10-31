@@ -364,7 +364,7 @@ def make_clash(items: list[str]) -> tuple[str, int]:
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; soskeynet-sub/1.2; +https://github.com/ghafas/soskeynet-sub)"})
+    session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; hamyarvpnproxy-sub/1.2; +https://github.com/ghafas/hamyarvpnproxy-sub)"})
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     pages = 0
@@ -497,9 +497,9 @@ def main() -> None:
     (OUTPUT_DIR / "index.html").write_text(
         f"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>SOSkeyNET subscriptions</title>
+<title>HamyarVPNProxy subscriptions</title>
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
-<h1>SOSkeyNET subscriptions</h1>
+<h1>HamyarVPNProxy subscriptions</h1>
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
