@@ -1,4 +1,4 @@
-name: Update SOSkeyNET subscriptions
+name: Update HamyarVPNProxy subscriptions
 
 on:
   workflow_dispatch:
