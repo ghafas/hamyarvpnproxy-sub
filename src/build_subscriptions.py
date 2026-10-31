@@ -398,15 +398,10 @@ def main() -> None:
         (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
     combined = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
     (OUTPUT_DIR / "all.txt").write_text(to_base64(combined), encoding="ascii")
-    # Narcic Gateway's current ConfigParser supports these URI schemes. Keep
-    # this compatibility feed as plain text: one directly parseable link/line.
-    # TUIC and SSR are omitted because its Protocol enum does not map them.
-    narcic_schemes = {"vless", "vmess", "trojan", "ss", "hysteria",
-                      "hysteria2", "wireguard", "socks"}
-    narcic_links = [uri for protocol in SCHEMES if protocol in narcic_schemes
-                    for uri in found.get(protocol, [])]
-    (OUTPUT_DIR / "narcic.txt").write_text(
-        "\n".join(narcic_links) + ("\n" if narcic_links else ""),
+    # Generic plain-text subscription: all collected URI schemes, one per line.
+    # Clients import only the protocols they implement.
+    (OUTPUT_DIR / "all-plain.txt").write_text(
+        "\n".join(combined) + ("\n" if combined else ""),
         encoding="utf-8",
     )
     (OUTPUT_DIR / "tested.txt").write_text("", encoding="ascii")
@@ -479,7 +474,7 @@ def main() -> None:
 <style>body{{font:16px system-ui;max-width:680px;margin:3rem auto;padding:0 1rem;line-height:1.6}}a{{display:block;margin:.4rem 0}}</style>
 <h1>SOSkeyNET subscriptions</h1>
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
-<a href="all.txt">ALL protocols ({len(combined)})</a>
+<a href="all.txt">ALL protocols Base64 ({len(combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
@@ -490,7 +485,7 @@ def main() -> None:
     print(f"Scanned {pages} pages; kept {len(combined)} valid unique URIs (cap {MAX_PER_PROTOCOL}/protocol).")
     print(counts)
     print(f"Clash/Mihomo nodes: {len(clash_nodes)}; skipped unsupported/unparsed: {skipped or 'none'}.")
-    print("Wrote protocol Base64 files, all.txt, clash.yaml and empty tested.txt.")
+    print("Wrote protocol Base64 files, all.txt, all-plain.txt, clash.yaml and empty tested.txt.")
 
 
 if __name__ == "__main__":
