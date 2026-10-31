@@ -14,8 +14,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-CHANNEL = "SOSkeyNET"
-BASE_URL = f"https://t.me/s/{CHANNEL}"
+CHANNELS = ("SOSkeyNET", "meliproxyy")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 100
@@ -262,9 +261,9 @@ def uri_to_clash(uri: str) -> dict | None:
     return None
 
 
-def fetch_page(session: requests.Session, before: int | None = None) -> tuple[str, list[int]]:
+def fetch_page(session: requests.Session, channel: str, before: int | None = None) -> tuple[str, list[int]]:
     params = {"before": before} if before else None
-    response = session.get(BASE_URL, params=params, timeout=TIMEOUT)
+    response = session.get(f"https://t.me/s/{channel}", params=params, timeout=TIMEOUT)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     chunks: list[str] = []
@@ -368,31 +367,35 @@ def main() -> None:
     session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; soskeynet-sub/1.2; +https://github.com/ghafas/soskeynet-sub)"})
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
-    before = None
     pages = 0
-    for _ in range(MAX_PAGES):
-        try:
-            page_text, ids = fetch_page(session, before)
-        except requests.RequestException as exc:
-            print(f"Fetch stopped after {pages} pages: {exc}")
-            break
-        pages += 1
-        for raw_uri in URI_RE.findall(page_text):
-            uri = clean_uri(raw_uri)
-            protocol = protocol_of(uri)
-            if not protocol or uri in seen[protocol] or not plausible_uri(uri):
-                continue
-            if len(found[protocol]) >= MAX_PER_PROTOCOL:
-                continue
-            seen[protocol].add(uri)
-            found[protocol].append(uri)
-        if not ids:
-            break
-        oldest = min(ids)
-        if before is not None and oldest >= before:
-            break
-        before = oldest
-        time.sleep(0.35)
+    for channel in CHANNELS:
+        before = None
+        channel_pages = 0
+        for _ in range(MAX_PAGES):
+            try:
+                page_text, ids = fetch_page(session, channel, before)
+            except requests.RequestException as exc:
+                print(f"Fetch stopped for @{channel} after {channel_pages} pages: {exc}")
+                break
+            pages += 1
+            channel_pages += 1
+            for raw_uri in URI_RE.findall(page_text):
+                uri = clean_uri(raw_uri)
+                protocol = protocol_of(uri)
+                if not protocol or uri in seen[protocol] or not plausible_uri(uri):
+                    continue
+                if len(found[protocol]) >= MAX_PER_PROTOCOL:
+                    continue
+                seen[protocol].add(uri)
+                found[protocol].append(uri)
+            if not ids:
+                break
+            oldest = min(ids)
+            if before is not None and oldest >= before:
+                break
+            before = oldest
+            time.sleep(0.35)
+        print(f"Scanned @{channel}: {channel_pages} pages.")
 
     for protocol in SCHEMES:
         (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
@@ -502,7 +505,7 @@ def main() -> None:
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
-<p>Source: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
