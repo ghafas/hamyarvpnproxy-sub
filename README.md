@@ -1,6 +1,6 @@
 # HamyarVPNProxy subscriptions
 
-Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy).
+Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy), and [@persianvpnhub](https://t.me/persianvpnhub).
 
 ## Subscription links
 
@@ -35,3 +35,6 @@ The combined Xray-friendly feeds omit legacy Shadowsocks CFB entries that can pr
 The Clash/Mihomo YAML is generated from supported protocols. Some protocol URI variants or unsupported Shadowsocks methods may be skipped if they cannot be translated safely.
 
 **Important:** `tested.txt` remains empty until a real proxy tunnel is established and actual data transfer is measured. The Clash/Mihomo AUTO group uses URL latency checks; that is not a real download-speed benchmark. Proxy availability and performance vary by network and location.
+
+
+The collector reads proxy URIs from ordinary message text, inline code, multiline code blocks, and direct Telegram links.
