@@ -26,6 +26,33 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - [WireGuard](https://ghafas.github.io/hamyarvpnproxy-sub/wireguard.txt)
 - [SOCKS](https://ghafas.github.io/hamyarvpnproxy-sub/socks.txt)
 
+## How to add another Telegram channel
+
+To add a new public Telegram channel to the collector:
+
+1. Open the [`src/build_subscriptions.py` file](https://github.com/ghafas/hamyarvpnproxy-sub/blob/main/src/build_subscriptions.py) in this repository.
+2. Find the `CHANNELS` line near the top of the file. It currently looks like this:
+
+```python
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub")
+```
+
+3. Add the channel's username inside the parentheses, without `@`, and put it in quotation marks. Separate names with commas. For example, to add `@NewVPNChannel`:
+
+```python
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "NewVPNChannel")
+```
+
+4. Save the change with **Commit changes** on GitHub. You can do this directly in the browser; no need to download the project.
+5. To run an update immediately, open the repository's **Actions** tab, select the subscription update workflow, and choose **Run workflow** if that option is available. Otherwise, the scheduled workflow checks for updates every 30 minutes.
+
+### What kind of channels work?
+
+- The channel must be public and its posts must be readable on Telegram's web preview.
+- The collector looks for supported proxy links in ordinary message text, inline code, multiline code blocks, and direct links.
+- Write only the channel username in `CHANNELS`, not the full `https://t.me/...` address.
+- Private channels, invitation-only posts, and content that Telegram does not expose publicly cannot be collected by this method.
+
 ## Update and compatibility
 
 GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 100 unique configurations per protocol.
