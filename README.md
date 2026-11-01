@@ -12,10 +12,7 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - All protocols except Shadowsocks (Base64): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss.txt
 - All protocols except Shadowsocks (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss-plain.txt
 - Clash / Mihomo configuration: https://ghafas.github.io/hamyarvpnproxy-sub/clash.yaml
-- AsteriskBOX (outbounds-only JSON): https://ghafas.github.io/hamyarvpnproxy-sub/asteriskbox.json
-- AsteriskBOX without Shadowsocks: https://ghafas.github.io/hamyarvpnproxy-sub/asteriskbox-no-ss.json
-- Sing-box Android (standalone TUN config): https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json
-- Sing-box Android without Shadowsocks: https://ghafas.github.io/hamyarvpnproxy-sub/singbox-no-ss.json
+- **Universal Sing-box JSON (recommended for Sing-box-compatible apps, including AsteriskBOX): https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json**
 - Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt
 
 ### Protocol-specific subscriptions (Base64)
@@ -30,13 +27,17 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - [WireGuard](https://ghafas.github.io/hamyarvpnproxy-sub/wireguard.txt)
 - [SOCKS](https://ghafas.github.io/hamyarvpnproxy-sub/socks.txt)
 
-## AsteriskBOX and Sing-box Android
+## One universal Sing-box link
 
-Use the separate `asteriskbox*.json` files with AsteriskBOX. They contain only translated `outbounds`; AsteriskBOX must create its own VPN/TUN service and proxy groups. After importing, select the protocol group (for example `vless`) in the app's **Global selector** rather than leaving it on `Direct`.
+Use this same URL in Sing-box-compatible apps, including AsteriskBOX:
 
-Use the `singbox*.json` files with a standalone Sing-box Android client. These are full configurations and include a TUN inbound, a final proxy route, and an `auto` selector.
+`https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json`
 
-**Automatic selection limitation:** Sing-box's native `urltest` checks reachability/latency using a small HTTP response. It does not measure sustained download throughput. A true best-download-server decision must download a bounded test payload through each candidate tunnel on the user's device/network, compare throughput and stability, and then switch the active outbound. A static subscription generator or GitHub runner cannot accurately perform that measurement for each user's mobile network. Do not interpret the current `auto` group as a real-download-speed ranking.
+It is a full Sing-box JSON configuration containing the server `outbounds`, Android TUN inbound, proxy route, and automatic latency-based selector. AsteriskBOX's importer reads the `outbounds` from this JSON and creates its own VPN service and proxy groups; after importing there, choose the desired protocol group (for example `vless`) in **Global selector**, not `Direct`.
+
+Some apps offer different import modes (remote profile/config versus node subscription). Choose the Sing-box JSON/remote-config import mode. The separate legacy app-specific JSON files are no longer the recommended links.
+
+**Automatic selection limitation:** the built-in `urltest` measures reachability/latency with a small HTTP response, not sustained download throughput. Real download-speed-based selection requires a bounded download test through each candidate tunnel on the user's device and network. A static subscription file cannot measure that accurately.
 
 ## How to add another Telegram channel
 
