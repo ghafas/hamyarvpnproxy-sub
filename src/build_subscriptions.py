@@ -403,7 +403,7 @@ def uri_to_singbox(uri: str) -> dict | None:
         if q.get("obfs"):
             node["obfs"] = {"type": q["obfs"], "password": q.get("obfs-password", q.get("obfsParam", ""))}
         if q.get("upmbps"):
-            node[" up_mbps".strip()] = int(q["upmbps"])
+            node["up_mbps"] = int(q["upmbps"])
         if q.get("downmbps"):
             node["down_mbps"] = int(q["downmbps"])
     elif scheme == "socks":
