@@ -476,26 +476,51 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         base = node.get("tag") or node.get("server") or "proxy"
         tag = base
         suffix = 2
-        while tag in used_tags:
+        while tag in used_tags or tag in {"direct", "proxy"}:
             tag = f"{base}-{suffix}"
             suffix += 1
         node["tag"] = tag
         used_tags.add(tag)
         outbounds.append(node)
 
-    tags = [item["tag"] for item in outbounds]
+    server_tags = [item["tag"] for item in outbounds]
+    if server_tags:
+        # Sing-box clients expose selectable servers through a selector outbound.
+        # Without this group, the config imports as a single fixed route and the
+        # app has no proxy list for the user to choose from.
+        selectable = server_tags + ["direct"]
+        outbounds.extend([
+            {"type": "direct", "tag": "direct"},
+            {
+                "type": "selector",
+                "tag": "proxy",
+                "outbounds": selectable,
+                "default": server_tags[0],
+                "interrupt_exist_connections": True,
+            },
+        ])
+        final_tag = "proxy"
+    else:
+        outbounds.append({"type": "direct", "tag": "direct"})
+        final_tag = "direct"
+
     config = {
         "log": {"level": "warn"},
-        "outbounds": outbounds + ([{"type": "direct", "tag": "direct"}] if "direct" not in used_tags else []),
-        "route": {"final": tags[0] if tags else "direct"},
+        "outbounds": outbounds,
+        "route": {"final": final_tag},
     }
-    # A valid JSON document and unique outbound tags are required before publishing.
-    encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+    encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\\n"
     checked = json.loads(encoded)
     checked_tags = [item["tag"] for item in checked["outbounds"]]
     if len(checked_tags) != len(set(checked_tags)):
         raise ValueError(f"Duplicate Sing-box outbound tags in {label}")
-    return encoded, len(outbounds), dict(skipped)
+    selectors = [item for item in checked["outbounds"] if item.get("type") == "selector"]
+    if selectors:
+        available_tags = set(checked_tags)
+        missing = set(selectors[0].get("outbounds", [])) - available_tags
+        if missing:
+            raise ValueError(f"Sing-box selector in {label} references missing outbounds: {sorted(missing)}")
+    return encoded, len(server_tags), dict(skipped)
 
 
 def fetch_page(session: requests.Session, channel: str, before: int | None = None) -> tuple[str, list[int]]:
