@@ -835,7 +835,10 @@ def main() -> None:
 
     (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
 
-    # Shared canonical list is created before either exporter.\n    singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]\n\n    # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
+    # Shared canonical list is created before either exporter.
+    singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
+
+    # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
     # Keep its feed outbounds-only; do not embed standalone Android inbounds/routes.
     asteriskbox_text, asteriskbox_count, asteriskbox_skipped = make_asteriskbox(singbox_items, "asteriskbox-all")
     (OUTPUT_DIR / "asteriskbox.json").write_text(asteriskbox_text, encoding="utf-8")
