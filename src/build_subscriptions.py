@@ -531,11 +531,15 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
             "rules": [
                 {"clash_mode": "Global", "server": "proxy-dns"},
                 {"clash_mode": "Direct", "server": "direct-dns"},
+                *([{"server": "proxy-dns", "source_ip_cidr": [
+                    "172.19.0.0/30", "fdfe:dcba:9876::1/126"
+                ]}] if server_tags else []),
             ],
             "final": "local-dns", "strategy": "prefer_ipv4",
         },
         "inbounds": [
-            {"type": "tun", "tag": "tun-in", "address": ["172.19.0.1/30"],
+            {"type": "tun", "tag": "tun-in",
+             "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
              "mtu": 9000, "auto_route": True, "stack": "system",
              "platform": {"http_proxy": {"enabled": True, "server": "127.0.0.1",
                                          "server_port": 2080}}},
