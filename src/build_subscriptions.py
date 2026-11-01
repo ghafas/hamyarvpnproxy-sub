@@ -509,7 +509,7 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         "outbounds": outbounds,
         "route": {"final": final_tag},
     }
-    encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\\n"
+    encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
     checked = json.loads(encoded)
     checked_tags = [item["tag"] for item in checked["outbounds"]]
     if len(checked_tags) != len(set(checked_tags)):
