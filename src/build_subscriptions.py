@@ -497,24 +497,22 @@ def make_asteriskbox(items: list[str], label: str) -> tuple[str, int, dict[str, 
 
 
 def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
-    """Standalone Android TUN config; native urltest measures latency, not download speed."""
+    """Standalone Android TUN config with automatic latency-based fallback.
+
+    urltest measures reachability/latency only, not sustained download speed.
+    """
     server_outbounds, skipped = unique_singbox_outbounds(items, label)
     server_tags = [item["tag"] for item in server_outbounds]
     outbounds = list(server_outbounds)
     if server_tags:
         outbounds.extend([
             {"type": "direct", "tag": "direct"},
-            {
-                "type": "urltest", "tag": "auto", "outbounds": server_tags,
-                "url": "https://www.gstatic.com/generate_204",
-                "interval": "3m", "tolerance": 50,
-                "interrupt_exist_connections": True,
-            },
-            {
-                "type": "selector", "tag": "proxy",
-                "outbounds": ["auto"] + server_tags + ["direct"],
-                "default": "auto", "interrupt_exist_connections": True,
-            },
+            {"type": "urltest", "tag": "auto", "outbounds": server_tags,
+             "url": "https://www.gstatic.com/generate_204", "interval": "3m",
+             "tolerance": 50, "interrupt_exist_connections": True},
+            {"type": "selector", "tag": "proxy",
+             "outbounds": ["auto"] + server_tags + ["direct"],
+             "default": "auto", "interrupt_exist_connections": True},
         ])
         final_tag = "proxy"
     else:
@@ -522,13 +520,36 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         final_tag = "direct"
     config = {
         "log": {"level": "warn"},
-        "inbounds": [{
-            "type": "tun", "tag": "tun-in",
-            "address": ["172.19.0.1/30"],
-            "auto_route": True, "stack": "mixed",
-        }],
+        "dns": {
+            "servers": [
+                {"type": "local", "tag": "local-dns"},
+                {"type": "local", "tag": "direct-dns"},
+                {"type": "tcp", "tag": "proxy-dns", "server": "8.8.8.8",
+                 "server_port": 53, "detour": "proxy" if server_tags else "direct",
+                 "domain_resolver": "local-dns"},
+            ],
+            "rules": [
+                {"clash_mode": "Global", "server": "proxy-dns"},
+                {"clash_mode": "Direct", "server": "direct-dns"},
+            ],
+            "final": "local-dns", "strategy": "prefer_ipv4",
+        },
+        "inbounds": [
+            {"type": "tun", "tag": "tun-in", "address": ["172.19.0.1/30"],
+             "mtu": 9000, "auto_route": True, "stack": "system",
+             "platform": {"http_proxy": {"enabled": True, "server": "127.0.0.1",
+                                         "server_port": 2080}}},
+            {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1",
+             "listen_port": 2080},
+        ],
         "outbounds": outbounds,
-        "route": {"final": final_tag},
+        "route": {
+            "auto_detect_interface": True,
+            "default_domain_resolver": "local-dns",
+            "final": final_tag,
+            "rules": [{"action": "hijack-dns", "protocol": "dns"},
+                      {"action": "sniff"}],
+        },
     }
     encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
     checked = json.loads(encoded)
@@ -814,7 +835,7 @@ def main() -> None:
 
     (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
 
-    # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
+    # Shared canonical list is created before either exporter.\n    singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]\n\n    # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
     # Keep its feed outbounds-only; do not embed standalone Android inbounds/routes.
     asteriskbox_text, asteriskbox_count, asteriskbox_skipped = make_asteriskbox(singbox_items, "asteriskbox-all")
     (OUTPUT_DIR / "asteriskbox.json").write_text(asteriskbox_text, encoding="utf-8")
@@ -828,7 +849,6 @@ def main() -> None:
         asteriskbox_protocol_counts[protocol] = count
 
     # Sing-box exports are generated from the same validated canonical URI set.
-    singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
     singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
     (OUTPUT_DIR / "singbox.json").write_text(singbox_text, encoding="utf-8")
     singbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
