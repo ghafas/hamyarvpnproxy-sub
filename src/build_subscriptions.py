@@ -485,17 +485,24 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
 
     server_tags = [item["tag"] for item in outbounds]
     if server_tags:
-        # Sing-box clients expose selectable servers through a selector outbound.
-        # Without this group, the config imports as a single fixed route and the
-        # app has no proxy list for the user to choose from.
-        selectable = server_tags + ["direct"]
+        # urltest periodically probes all nodes and selects the lowest-latency
+        # reachable server. The outer selector keeps manual override available.
         outbounds.extend([
             {"type": "direct", "tag": "direct"},
             {
+                "type": "urltest",
+                "tag": "auto",
+                "outbounds": server_tags,
+                "url": "https://www.gstatic.com/generate_204",
+                "interval": "3m",
+                "tolerance": 50,
+                "interrupt_exist_connections": True,
+            },
+            {
                 "type": "selector",
                 "tag": "proxy",
-                "outbounds": selectable,
-                "default": server_tags[0],
+                "outbounds": ["auto"] + server_tags + ["direct"],
+                "default": "auto",
                 "interrupt_exist_connections": True,
             },
         ])
