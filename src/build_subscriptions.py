@@ -425,6 +425,12 @@ def uri_to_singbox(uri: str) -> dict | None:
         if q.get("fp"):
             tls["utls"] = {"enabled": True, "fingerprint": q["fp"]}
         if security == "reality":
+            # Sing-box requires uTLS when a REALITY client is initialized.
+            # Some share links omit fp; default those nodes to Chrome rather
+            # than emitting a REALITY outbound that fails at startup.
+            tls["utls"] = {
+                "enabled": True, "fingerprint": q.get("fp") or "chrome",
+            }
             tls["reality"] = {
                 "enabled": True, "public_key": q.get("pbk", ""),
                 "short_id": q.get("sid", ""),
