@@ -318,6 +318,173 @@ def uri_to_clash(uri: str) -> dict | None:
     return None
 
 
+
+def uri_to_singbox(uri: str) -> dict | None:
+    """Translate a structurally valid share URI to a Sing-box outbound."""
+    scheme = protocol_of(uri)
+    if scheme not in {"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks"}:
+        return None
+    if scheme == "ss":
+        parsed = parse_ss(uri)
+        if not parsed:
+            return None
+        return {
+            "type": "shadowsocks", "tag": node_name(uri, parsed["server"]),
+            "server": parsed["server"], "server_port": parsed["port"],
+            "method": parsed["cipher"], "password": parsed["password"],
+        }
+
+    if scheme == "vmess":
+        try:
+            data = json.loads(decode_b64(uri.split("://", 1)[1].split("#", 1)[0]))
+            host = str(data["add"])
+            port = int(data["port"])
+            node = {
+                "type": "vmess", "tag": node_name(uri, host),
+                "server": host, "server_port": port, "uuid": str(data["id"]),
+                "security": str(data.get("scy") or "auto"),
+                "alter_id": int(data.get("aid", 0)),
+            }
+            network = str(data.get("net", "tcp")).lower()
+            if network in {"ws", "grpc", "http"}:
+                transport = {"type": network}
+                if network == "ws":
+                    transport["path"] = data.get("path") or "/"
+                    if data.get("host"):
+                        transport["headers"] = {"Host": data["host"]}
+                elif network == "grpc":
+                    transport["service_name"] = data.get("path", "")
+                node["transport"] = transport
+            if str(data.get("tls", "")).lower() in {"tls", "true"}:
+                tls = {"enabled": True}
+                server_name = data.get("sni") or data.get("host")
+                if server_name:
+                    tls["server_name"] = server_name
+                if data.get("fp"):
+                    tls["utls"] = {"enabled": True, "fingerprint": data["fp"]}
+                node["tls"] = tls
+            return node
+        except (ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
+            return None
+
+    parts = urlsplit(uri)
+    host = parts.hostname
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    if not host or not port:
+        return None
+    q = query_options(parts)
+    user = unquote(parts.username or "")
+    password = unquote(parts.password or "")
+    node = {
+        "tag": node_name(uri, host), "server": host, "server_port": port,
+    }
+
+    if scheme == "vless":
+        node.update({"type": "vless", "uuid": user})
+        if q.get("flow"):
+            node["flow"] = q["flow"]
+    elif scheme == "trojan":
+        node.update({"type": "trojan", "password": user})
+    elif scheme == "tuic":
+        node.update({
+            "type": "tuic", "uuid": user, "password": password,
+            "congestion_control": q.get("congestion_control", "bbr"),
+            "udp_relay_mode": q.get("udp_relay_mode", "native"),
+        })
+    elif scheme == "hysteria2":
+        node.update({"type": "hysteria2", "password": user or password})
+        if q.get("obfs"):
+            node["obfs"] = {"type": q["obfs"], "password": q.get("obfs-password", q.get("obfsParam", ""))}
+    elif scheme == "hysteria":
+        node.update({"type": "hysteria", "auth_str": q.get("auth", user or password)})
+        if q.get("obfs"):
+            node["obfs"] = {"type": q["obfs"], "password": q.get("obfs-password", q.get("obfsParam", ""))}
+        if q.get("upmbps"):
+            node[" up_mbps".strip()] = int(q["upmbps"])
+        if q.get("downmbps"):
+            node["down_mbps"] = int(q["downmbps"])
+    elif scheme == "socks":
+        node["type"] = "socks"
+        if user:
+            node["username"] = user
+            node["password"] = password
+
+    security = q.get("security", "").lower()
+    if scheme in {"vless", "trojan", "tuic", "hysteria", "hysteria2"} and (
+        security in {"tls", "reality"} or q.get("sni") or scheme in {"trojan", "tuic", "hysteria", "hysteria2"}
+    ):
+        tls = {"enabled": True}
+        server_name = q.get("sni") or q.get("servername") or host
+        if server_name:
+            tls["server_name"] = server_name
+        if q.get("alpn"):
+            tls["alpn"] = q["alpn"].split(",")
+        if q.get("fp"):
+            tls["utls"] = {"enabled": True, "fingerprint": q["fp"]}
+        if security == "reality":
+            tls["reality"] = {
+                "enabled": True, "public_key": q.get("pbk", ""),
+                "short_id": q.get("sid", ""),
+            }
+        if q.get("insecure") == "1" or q.get("allowInsecure") == "1":
+            tls["insecure"] = True
+        node["tls"] = tls
+
+    network = q.get("type", "tcp").lower()
+    if network in {"ws", "grpc", "http"}:
+        transport = {"type": network}
+        if network == "ws":
+            transport["path"] = q.get("path", "/")
+            if q.get("host"):
+                transport["headers"] = {"Host": q["host"]}
+        elif network == "grpc":
+            transport["service_name"] = q.get("serviceName", q.get("service-name", ""))
+        node["transport"] = transport
+    return node
+
+
+def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+    outbounds = []
+    used_tags = set()
+    skipped: dict[str, int] = defaultdict(int)
+    for uri in items:
+        scheme = protocol_of(uri) or "unknown"
+        try:
+            node = uri_to_singbox(uri)
+        except Exception as exc:
+            print(f"Skipping malformed Sing-box {scheme} URI: {type(exc).__name__}")
+            node = None
+        if node is None:
+            skipped[scheme] += 1
+            continue
+        base = node.get("tag") or node.get("server") or "proxy"
+        tag = base
+        suffix = 2
+        while tag in used_tags:
+            tag = f"{base}-{suffix}"
+            suffix += 1
+        node["tag"] = tag
+        used_tags.add(tag)
+        outbounds.append(node)
+
+    tags = [item["tag"] for item in outbounds]
+    config = {
+        "log": {"level": "warn"},
+        "outbounds": outbounds + ([{"type": "direct", "tag": "direct"}] if "direct" not in used_tags else []),
+        "route": {"final": tags[0] if tags else "direct"},
+    }
+    # A valid JSON document and unique outbound tags are required before publishing.
+    encoded = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+    checked = json.loads(encoded)
+    checked_tags = [item["tag"] for item in checked["outbounds"]]
+    if len(checked_tags) != len(set(checked_tags)):
+        raise ValueError(f"Duplicate Sing-box outbound tags in {label}")
+    return encoded, len(outbounds), dict(skipped)
+
+
 def fetch_page(session: requests.Session, channel: str, before: int | None = None) -> tuple[str, list[int]]:
     params = {"before": before} if before else None
     response = session.get(f"https://t.me/s/{channel}", params=params, timeout=TIMEOUT)
@@ -585,7 +752,22 @@ def main() -> None:
     for proxy in validated.get("proxies", []):
         if proxy.get("type") == "ss" and proxy.get("cipher") not in SUPPORTED_SS_CIPHERS:
             raise ValueError(f"Unsupported Shadowsocks cipher emitted: {proxy.get('cipher')}")
+
     (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
+
+    # Sing-box exports are generated from the same validated canonical URI set.
+    singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
+    singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
+    (OUTPUT_DIR / "singbox.json").write_text(singbox_text, encoding="utf-8")
+    singbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
+    singbox_no_ss_text, singbox_no_ss_count, singbox_no_ss_skipped = make_singbox(singbox_no_ss_items, "no-ss")
+    (OUTPUT_DIR / "singbox-no-ss.json").write_text(singbox_no_ss_text, encoding="utf-8")
+    singbox_protocol_counts = {}
+    for protocol in SCHEMES:
+        text_config, count, skipped = make_singbox(found.get(protocol, []), protocol)
+        (OUTPUT_DIR / f"singbox-{protocol}.json").write_text(text_config, encoding="utf-8")
+        singbox_protocol_counts[protocol] = count
+
 
     links = "\n".join(f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>' for p in SCHEMES)
     (OUTPUT_DIR / "index.html").write_text(
@@ -597,6 +779,9 @@ def main() -> None:
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
+<a href="singbox.json">Sing-box all protocols ({singbox_count} compatible outbounds)</a>
+<a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
+<ul>{''.join(f'<li><a href="singbox-{p}.json">Sing-box {p.upper()} ({singbox_protocol_counts[p]})</a></li>' for p in SCHEMES)}</ul>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
 <p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a></p>
@@ -608,7 +793,9 @@ def main() -> None:
     print(f"Clash/Mihomo nodes: {len(clash_nodes)}; skipped unsupported/unparsed: {skipped or 'none'}.")
     print(f"Excluded {excluded_xray_ss} Shadowsocks nodes from Xray-safe combined feeds.")
     print(f"Wrote no-SS combined feeds with {len(no_ss_combined)} configurations.")
-    print("Wrote protocol feeds, combined feeds, Clash YAML and empty tested.txt.")
+    print(f"Sing-box outbounds: {singbox_count}; skipped: {singbox_skipped or 'none'}.")
+    print(f"Sing-box no-SS outbounds: {singbox_no_ss_count}; skipped: {singbox_no_ss_skipped or 'none'}.")
+    print("Wrote protocol feeds, combined feeds, Clash YAML, Sing-box JSON exports and empty tested.txt.")
 
 
 if __name__ == "__main__":
