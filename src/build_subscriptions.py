@@ -319,6 +319,13 @@ def uri_to_clash(uri: str) -> dict | None:
 
 
 
+def normalize_utls_fingerprint(value: object) -> str:
+    """Return a fingerprint accepted by sing-box uTLS."""
+    fingerprint = str(value or "").strip().lower()
+    allowed = {"chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq"}
+    return fingerprint if fingerprint in allowed else "chrome"
+
+
 def uri_to_singbox(uri: str) -> dict | None:
     """Translate a structurally valid share URI to a Sing-box outbound."""
     scheme = protocol_of(uri)
@@ -361,7 +368,7 @@ def uri_to_singbox(uri: str) -> dict | None:
                 if server_name:
                     tls["server_name"] = server_name
                 if data.get("fp"):
-                    tls["utls"] = {"enabled": True, "fingerprint": data["fp"]}
+                    tls["utls"] = {"enabled": True, "fingerprint": normalize_utls_fingerprint(data["fp"])}
                 node["tls"] = tls
             return node
         except (ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
@@ -423,13 +430,13 @@ def uri_to_singbox(uri: str) -> dict | None:
         if q.get("alpn"):
             tls["alpn"] = q["alpn"].split(",")
         if q.get("fp"):
-            tls["utls"] = {"enabled": True, "fingerprint": q["fp"]}
+            tls["utls"] = {"enabled": True, "fingerprint": normalize_utls_fingerprint(q["fp"])}
         if security == "reality":
             # Sing-box requires uTLS when a REALITY client is initialized.
             # Some share links omit fp; default those nodes to Chrome rather
             # than emitting a REALITY outbound that fails at startup.
             tls["utls"] = {
-                "enabled": True, "fingerprint": q.get("fp") or "chrome",
+                "enabled": True, "fingerprint": normalize_utls_fingerprint(q.get("fp")),
             }
             tls["reality"] = {
                 "enabled": True, "public_key": q.get("pbk", ""),
