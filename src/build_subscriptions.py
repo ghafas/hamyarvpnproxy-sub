@@ -459,9 +459,10 @@ def uri_to_singbox(uri: str) -> dict | None:
     return node
 
 
-def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
-    outbounds = []
-    used_tags = set()
+def unique_singbox_outbounds(items: list[str], label: str) -> tuple[list[dict], dict[str, int]]:
+    """Translate share URIs to uniquely tagged Sing-box outbounds."""
+    outbounds: list[dict] = []
+    used_tags: set[str] = set()
     skipped: dict[str, int] = defaultdict(int)
     for uri in items:
         scheme = protocol_of(uri) or "unknown"
@@ -474,45 +475,58 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
             skipped[scheme] += 1
             continue
         base = node.get("tag") or node.get("server") or "proxy"
-        tag = base
-        suffix = 2
-        while tag in used_tags or tag in {"direct", "proxy"}:
+        tag, suffix = base, 2
+        while tag in used_tags or tag in {"direct", "proxy", "auto"}:
             tag = f"{base}-{suffix}"
             suffix += 1
         node["tag"] = tag
         used_tags.add(tag)
         outbounds.append(node)
+    return outbounds, dict(skipped)
 
-    server_tags = [item["tag"] for item in outbounds]
+
+def make_asteriskbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+    """Outbounds-only export; AsteriskBOX owns its Android VPN/TUN service."""
+    outbounds, skipped = unique_singbox_outbounds(items, label)
+    encoded = json.dumps({"outbounds": outbounds}, ensure_ascii=False, indent=2) + "\n"
+    checked = json.loads(encoded)
+    tags = [item["tag"] for item in checked["outbounds"]]
+    if len(tags) != len(set(tags)):
+        raise ValueError(f"Duplicate AsteriskBOX outbound tags in {label}")
+    return encoded, len(outbounds), skipped
+
+
+def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+    """Standalone Android TUN config; native urltest measures latency, not download speed."""
+    server_outbounds, skipped = unique_singbox_outbounds(items, label)
+    server_tags = [item["tag"] for item in server_outbounds]
+    outbounds = list(server_outbounds)
     if server_tags:
-        # urltest periodically probes all nodes and selects the lowest-latency
-        # reachable server. The outer selector keeps manual override available.
         outbounds.extend([
             {"type": "direct", "tag": "direct"},
             {
-                "type": "urltest",
-                "tag": "auto",
-                "outbounds": server_tags,
+                "type": "urltest", "tag": "auto", "outbounds": server_tags,
                 "url": "https://www.gstatic.com/generate_204",
-                "interval": "3m",
-                "tolerance": 50,
+                "interval": "3m", "tolerance": 50,
                 "interrupt_exist_connections": True,
             },
             {
-                "type": "selector",
-                "tag": "proxy",
+                "type": "selector", "tag": "proxy",
                 "outbounds": ["auto"] + server_tags + ["direct"],
-                "default": "auto",
-                "interrupt_exist_connections": True,
+                "default": "auto", "interrupt_exist_connections": True,
             },
         ])
         final_tag = "proxy"
     else:
         outbounds.append({"type": "direct", "tag": "direct"})
         final_tag = "direct"
-
     config = {
         "log": {"level": "warn"},
+        "inbounds": [{
+            "type": "tun", "tag": "tun-in",
+            "address": ["172.19.0.1/30"],
+            "auto_route": True, "stack": "mixed",
+        }],
         "outbounds": outbounds,
         "route": {"final": final_tag},
     }
@@ -523,12 +537,12 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         raise ValueError(f"Duplicate Sing-box outbound tags in {label}")
     selectors = [item for item in checked["outbounds"] if item.get("type") == "selector"]
     if selectors:
-        available_tags = set(checked_tags)
-        missing = set(selectors[0].get("outbounds", [])) - available_tags
+        missing = set(selectors[0].get("outbounds", [])) - set(checked_tags)
         if missing:
             raise ValueError(f"Sing-box selector in {label} references missing outbounds: {sorted(missing)}")
-    return encoded, len(server_tags), dict(skipped)
-
+    if not checked["inbounds"] or checked["inbounds"][0]["type"] != "tun":
+        raise ValueError(f"Missing Android TUN inbound in {label}")
+    return encoded, len(server_tags), skipped
 
 def fetch_page(session: requests.Session, channel: str, before: int | None = None) -> tuple[str, list[int]]:
     params = {"before": before} if before else None
@@ -800,6 +814,19 @@ def main() -> None:
 
     (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
 
+    # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
+    # Keep its feed outbounds-only; do not embed standalone Android inbounds/routes.
+    asteriskbox_text, asteriskbox_count, asteriskbox_skipped = make_asteriskbox(singbox_items, "asteriskbox-all")
+    (OUTPUT_DIR / "asteriskbox.json").write_text(asteriskbox_text, encoding="utf-8")
+    asteriskbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
+    asteriskbox_no_ss_text, asteriskbox_no_ss_count, _ = make_asteriskbox(asteriskbox_no_ss_items, "asteriskbox-no-ss")
+    (OUTPUT_DIR / "asteriskbox-no-ss.json").write_text(asteriskbox_no_ss_text, encoding="utf-8")
+    asteriskbox_protocol_counts = {}
+    for protocol in SCHEMES:
+        text_config, count, _ = make_asteriskbox(found.get(protocol, []), f"asteriskbox-{protocol}")
+        (OUTPUT_DIR / f"asteriskbox-{protocol}.json").write_text(text_config, encoding="utf-8")
+        asteriskbox_protocol_counts[protocol] = count
+
     # Sing-box exports are generated from the same validated canonical URI set.
     singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
     singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
@@ -824,7 +851,7 @@ def main() -> None:
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
-<a href="singbox.json">Sing-box all protocols ({singbox_count} compatible outbounds)</a>
+<a href="asteriskbox.json">AsteriskBOX all protocols ({asteriskbox_count} outbounds)</a>\n<a href="asteriskbox-no-ss.json">AsteriskBOX without Shadowsocks ({asteriskbox_no_ss_count} outbounds)</a>\n<a href="singbox.json">Sing-box all protocols ({singbox_count} compatible outbounds)</a>
 <a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
 <ul>{''.join(f'<li><a href="singbox-{p}.json">Sing-box {p.upper()} ({singbox_protocol_counts[p]})</a></li>' for p in SCHEMES)}</ul>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
