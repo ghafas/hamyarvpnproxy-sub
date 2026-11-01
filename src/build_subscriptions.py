@@ -851,9 +851,7 @@ def main() -> None:
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
-<a href="asteriskbox.json">AsteriskBOX all protocols ({asteriskbox_count} outbounds)</a>\n<a href="asteriskbox-no-ss.json">AsteriskBOX without Shadowsocks ({asteriskbox_no_ss_count} outbounds)</a>\n<a href="singbox.json">Sing-box all protocols ({singbox_count} compatible outbounds)</a>
-<a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
-<ul>{''.join(f'<li><a href="singbox-{p}.json">Sing-box {p.upper()} ({singbox_protocol_counts[p]})</a></li>' for p in SCHEMES)}</ul>
+<a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
 <p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a></p>
