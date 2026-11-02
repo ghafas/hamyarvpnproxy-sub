@@ -875,6 +875,12 @@ def main() -> None:
         (OUTPUT_DIR / f"singbox-{protocol}.json").write_text(text_config, encoding="utf-8")
         singbox_protocol_counts[protocol] = count
 
+    singbox_link_protocols = ("vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks")
+    singbox_links = "\\n".join(
+        f"<li><a href=\"singbox-{p}.json\">{p.upper()} ({singbox_protocol_counts[p]} compatible outbounds)</a></li>"
+        for p in singbox_link_protocols
+    )
+
 
     links = "\n".join(f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>' for p in SCHEMES)
     (OUTPUT_DIR / "index.html").write_text(
@@ -887,6 +893,9 @@ def main() -> None:
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
+<h2>Sing-box by protocol</h2>
+<ul>{singbox_links}</ul>
+<a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
 <p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a></p>
