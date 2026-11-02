@@ -867,7 +867,7 @@ def main() -> None:
             ] if protocol_nodes else [],
             "rules": ["MATCH,PROXY"] if protocol_nodes else [],
         }
-        protocol_text = json.dumps(protocol_config, ensure_ascii=False, indent=2) + "\\n"
+        protocol_text = json.dumps(protocol_config, ensure_ascii=False, indent=2) + "\n"
         yaml.safe_load(protocol_text)
         (OUTPUT_DIR / f"clash-{protocol}.yaml").write_text(protocol_text, encoding="utf-8")
         clash_protocol_counts[protocol] = len(protocol_nodes)
@@ -918,7 +918,7 @@ def main() -> None:
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
 <h2>Clash / Mihomo by protocol</h2>
-<ul>{"\\n".join(f'<li><a href="clash-{p}.yaml">{p.upper()} ({clash_protocol_counts[p]} nodes)</a></li>' for p in clash_protocol_types)}</ul>
+<ul>{"\n".join(f'<li><a href="clash-{p}.yaml">{p.upper()} ({clash_protocol_counts[p]} nodes)</a></li>' for p in clash_protocol_types)}</ul>
 <a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
 <h2>Sing-box by protocol</h2>
 <ul>{singbox_links}</ul>
