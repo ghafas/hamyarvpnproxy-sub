@@ -18,6 +18,8 @@ CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNB
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 200
+MAX_REMOTE_SINGBOX_NODES = 100
+REMOTE_SINGBOX_FEEDS = ("https://raw.githubusercontent.com/liketolivefree/kobabi/main/singbox_l.json",)
 TIMEOUT = 25
 SCHEMES = (
     "vless", "vmess", "trojan", "ss", "ssr",
@@ -485,9 +487,144 @@ def unique_singbox_outbounds(items: list[str], label: str) -> tuple[list[dict], 
     return outbounds, dict(skipped)
 
 
-def make_asteriskbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+def fetch_remote_singbox_nodes(session: requests.Session) -> list[dict]:
+    """Import only validated VLESS node outbounds from trusted public Sing-box feeds.
+
+    Never copy DNS, inbounds, route rules, selectors, URL tests, or arbitrary
+    outbound types from a third-party full configuration.
+    """
+    nodes: list[dict] = []
+    seen: set[str] = set()
+    for feed_url in REMOTE_SINGBOX_FEEDS:
+        try:
+            response = session.get(feed_url, timeout=TIMEOUT)
+            response.raise_for_status()
+            document = response.json()
+            raw_outbounds = document.get("outbounds", []) if isinstance(document, dict) else []
+            if not isinstance(raw_outbounds, list):
+                raise ValueError("outbounds is not a list")
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            print(f"Remote Sing-box feed unavailable ({feed_url}): {type(exc).__name__}")
+            continue
+
+        accepted = 0
+        for raw in raw_outbounds:
+            if not isinstance(raw, dict) or raw.get("type") != "vless":
+                continue
+            host = raw.get("server")
+            port = raw.get("server_port")
+            user_id = raw.get("uuid")
+            if not isinstance(host, str) or not host.strip() or not isinstance(port, int) or not 1 <= port <= 65535:
+                continue
+            try:
+                import uuid
+                if str(uuid.UUID(str(user_id))) != str(user_id).lower():
+                    continue
+            except (ValueError, AttributeError, TypeError):
+                continue
+
+            node = {"type": "vless", "server": host.strip(), "server_port": port, "uuid": str(user_id)}
+            flow = raw.get("flow")
+            if isinstance(flow, str) and flow in {"xtls-rprx-vision"}:
+                node["flow"] = flow
+
+            tls = raw.get("tls")
+            if not isinstance(tls, dict) or tls.get("enabled") is not True:
+                continue
+            clean_tls = {"enabled": True}
+            server_name = tls.get("server_name")
+            if isinstance(server_name, str) and server_name.strip():
+                clean_tls["server_name"] = server_name.strip()
+            alpn = tls.get("alpn")
+            if isinstance(alpn, list) and all(isinstance(x, str) for x in alpn):
+                clean_tls["alpn"] = alpn[:8]
+            utls = tls.get("utls")
+            if isinstance(utls, dict):
+                fingerprint = normalize_utls_fingerprint(utls.get("fingerprint"))
+                clean_tls["utls"] = {"enabled": True, "fingerprint": fingerprint}
+            reality = tls.get("reality")
+            if isinstance(reality, dict) and reality.get("enabled") is True:
+                public_key = reality.get("public_key")
+                if not isinstance(public_key, str) or not public_key.strip():
+                    continue
+                clean_tls["reality"] = {"enabled": True, "public_key": public_key.strip()}
+                short_id = reality.get("short_id")
+                if isinstance(short_id, str) and short_id:
+                    clean_tls["reality"]["short_id"] = short_id
+                if "utls" not in clean_tls:
+                    clean_tls["utls"] = {"enabled": True, "fingerprint": "chrome"}
+            elif "reality" in tls:
+                continue
+            if tls.get("insecure") is True:
+                clean_tls["insecure"] = True
+            node["tls"] = clean_tls
+
+            transport = raw.get("transport")
+            if isinstance(transport, dict):
+                kind = transport.get("type")
+                if kind not in {"ws", "grpc", "http", "httpupgrade"}:
+                    continue
+                clean_transport = {"type": kind}
+                if kind == "ws":
+                    path = transport.get("path")
+                    if isinstance(path, str) and path:
+                        clean_transport["path"] = path
+                    headers = transport.get("headers")
+                    if isinstance(headers, dict):
+                        host_header = headers.get("Host")
+                        if isinstance(host_header, str) and host_header:
+                            clean_transport["headers"] = {"Host": host_header}
+                elif kind == "grpc":
+                    service = transport.get("service_name")
+                    if isinstance(service, str):
+                        clean_transport["service_name"] = service
+                node["transport"] = clean_transport
+
+            identity = json.dumps(node, sort_keys=True, separators=(",", ":"))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            base_tag = str(raw.get("tag") or f"remote-vless-{accepted + 1}")[:72]
+            node["tag"] = f"kobabi-{base_tag}"
+            nodes.append(node)
+            accepted += 1
+            if accepted >= MAX_REMOTE_SINGBOX_NODES:
+                break
+        print(f"Remote Sing-box feed: imported {accepted} validated VLESS candidates.")
+    return nodes
+
+
+def merge_extra_singbox_nodes(base: list[dict], extras: list[dict]) -> list[dict]:
+    """Merge validated remote nodes, deduplicating by endpoint and credentials."""
+    merged = list(base)
+    used_tags = {str(node.get("tag")) for node in merged}
+    identities = {
+        (node.get("type"), node.get("server"), node.get("server_port"),
+         node.get("uuid"), node.get("password"), node.get("flow"))
+        for node in merged
+    }
+    for extra in extras:
+        identity = (extra.get("type"), extra.get("server"), extra.get("server_port"),
+                    extra.get("uuid"), extra.get("password"), extra.get("flow"))
+        if identity in identities:
+            continue
+        node = dict(extra)
+        base_tag = str(node.get("tag") or node.get("server") or "remote-proxy")
+        tag, suffix = base_tag, 2
+        while tag in used_tags or tag in {"direct", "proxy", "auto"}:
+            tag = f"{base_tag}-{suffix}"
+            suffix += 1
+        node["tag"] = tag
+        used_tags.add(tag)
+        identities.add(identity)
+        merged.append(node)
+    return merged
+
+
+def make_asteriskbox(items: list[str], label: str, extra_nodes: list[dict] | None = None) -> tuple[str, int, dict[str, int]]:
     """Outbounds-only export; AsteriskBOX owns its Android VPN/TUN service."""
     outbounds, skipped = unique_singbox_outbounds(items, label)
+    outbounds = merge_extra_singbox_nodes(outbounds, extra_nodes or [])
     encoded = json.dumps({"outbounds": outbounds}, ensure_ascii=False, indent=2) + "\n"
     checked = json.loads(encoded)
     tags = [item["tag"] for item in checked["outbounds"]]
@@ -496,12 +633,13 @@ def make_asteriskbox(items: list[str], label: str) -> tuple[str, int, dict[str, 
     return encoded, len(outbounds), skipped
 
 
-def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+def make_singbox(items: list[str], label: str, extra_nodes: list[dict] | None = None) -> tuple[str, int, dict[str, int]]:
     """Standalone Android TUN config with automatic latency-based fallback.
 
     urltest measures reachability/latency only, not sustained download speed.
     """
     server_outbounds, skipped = unique_singbox_outbounds(items, label)
+    server_outbounds = merge_extra_singbox_nodes(server_outbounds, extra_nodes or [])
     server_tags = [item["tag"] for item in server_outbounds]
     outbounds = list(server_outbounds)
     if server_tags:
@@ -842,12 +980,17 @@ def main() -> None:
     # Shared canonical list is created before either exporter.
     singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
 
+    # Add a capped, syntax-validated VLESS candidate pool from the external Sing-box feed.
+    # Only individual VLESS outbounds are imported; its DNS, routes, rule-sets,
+    # inbounds, selectors and URL-test groups are deliberately not copied.
+    remote_singbox_nodes = fetch_remote_singbox_nodes(session)
+
     # AsteriskBOX owns its VPN/TUN service and builds selectors in its importer.
     # Keep its feed outbounds-only; do not embed standalone Android inbounds/routes.
-    asteriskbox_text, asteriskbox_count, asteriskbox_skipped = make_asteriskbox(singbox_items, "asteriskbox-all")
+    asteriskbox_text, asteriskbox_count, asteriskbox_skipped = make_asteriskbox(singbox_items, "asteriskbox-all", remote_singbox_nodes)
     (OUTPUT_DIR / "asteriskbox.json").write_text(asteriskbox_text, encoding="utf-8")
     asteriskbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
-    asteriskbox_no_ss_text, asteriskbox_no_ss_count, _ = make_asteriskbox(asteriskbox_no_ss_items, "asteriskbox-no-ss")
+    asteriskbox_no_ss_text, asteriskbox_no_ss_count, _ = make_asteriskbox(asteriskbox_no_ss_items, "asteriskbox-no-ss", remote_singbox_nodes)
     (OUTPUT_DIR / "asteriskbox-no-ss.json").write_text(asteriskbox_no_ss_text, encoding="utf-8")
     asteriskbox_protocol_counts = {}
     for protocol in SCHEMES:
@@ -856,10 +999,10 @@ def main() -> None:
         asteriskbox_protocol_counts[protocol] = count
 
     # Sing-box exports are generated from the same validated canonical URI set.
-    singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
+    singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all", remote_singbox_nodes)
     (OUTPUT_DIR / "singbox.json").write_text(singbox_text, encoding="utf-8")
     singbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
-    singbox_no_ss_text, singbox_no_ss_count, singbox_no_ss_skipped = make_singbox(singbox_no_ss_items, "no-ss")
+    singbox_no_ss_text, singbox_no_ss_count, singbox_no_ss_skipped = make_singbox(singbox_no_ss_items, "no-ss", remote_singbox_nodes)
     (OUTPUT_DIR / "singbox-no-ss.json").write_text(singbox_no_ss_text, encoding="utf-8")
     singbox_protocol_counts = {}
     for protocol in SCHEMES:
