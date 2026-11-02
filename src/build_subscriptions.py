@@ -876,7 +876,7 @@ def main() -> None:
         singbox_protocol_counts[protocol] = count
 
     singbox_link_protocols = ("vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "tuic", "socks")
-    singbox_links = "\\n".join(
+    singbox_links = "\n".join(
         f"<li><a href=\"singbox-{p}.json\">{p.upper()} ({singbox_protocol_counts[p]} compatible outbounds)</a></li>"
         for p in singbox_link_protocols
     )
