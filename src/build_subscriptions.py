@@ -847,6 +847,31 @@ def main() -> None:
 
     (OUTPUT_DIR / "clash.yaml").write_text(clash_text, encoding="utf-8")
 
+    # Separate Clash/Mihomo profiles for each supported protocol.
+    clash_protocol_types = {
+        "vless": {"vless"}, "vmess": {"vmess"}, "trojan": {"trojan"},
+        "ss": {"ss"}, "hysteria": {"hysteria"}, "hysteria2": {"hysteria2"},
+        "tuic": {"tuic"}, "socks": {"socks5"},
+    }
+    clash_protocol_counts = {}
+    for protocol, node_types in clash_protocol_types.items():
+        protocol_nodes = [node.copy() for node in clash_nodes if node.get("type") in node_types]
+        protocol_names = [node["name"] for node in protocol_nodes]
+        protocol_config = {
+            "mixed-port": 7890, "allow-lan": False, "mode": "rule",
+            "log-level": "warning", "ipv6": True, "proxies": protocol_nodes,
+            "proxy-groups": [
+                {"name": "PROXY", "type": "select", "proxies": ["AUTO"] + protocol_names},
+                {"name": "AUTO", "type": "url-test", "url": "https://www.gstatic.com/generate_204",
+                 "interval": 300, "tolerance": 100, "proxies": protocol_names},
+            ] if protocol_nodes else [],
+            "rules": ["MATCH,PROXY"] if protocol_nodes else [],
+        }
+        protocol_text = json.dumps(protocol_config, ensure_ascii=False, indent=2) + "\\n"
+        yaml.safe_load(protocol_text)
+        (OUTPUT_DIR / f"clash-{protocol}.yaml").write_text(protocol_text, encoding="utf-8")
+        clash_protocol_counts[protocol] = len(protocol_nodes)
+
     # Shared canonical list is created before either exporter.
     singbox_items = [uri for protocol in SCHEMES for uri in found.get(protocol, [])]
 
@@ -892,6 +917,8 @@ def main() -> None:
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
+<h2>Clash / Mihomo by protocol</h2>
+<ul>{"\\n".join(f'<li><a href="clash-{p}.yaml">{p.upper()} ({clash_protocol_counts[p]} nodes)</a></li>' for p in clash_protocol_types)}</ul>
 <a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
 <h2>Sing-box by protocol</h2>
 <ul>{singbox_links}</ul>
