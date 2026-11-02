@@ -598,14 +598,13 @@ def merge_extra_singbox_nodes(base: list[dict], extras: list[dict]) -> list[dict
     """Merge validated remote nodes, deduplicating by endpoint and credentials."""
     merged = list(base)
     used_tags = {str(node.get("tag")) for node in merged}
-    identities = {
-        (node.get("type"), node.get("server"), node.get("server_port"),
-         node.get("uuid"), node.get("password"), node.get("flow"))
-        for node in merged
-    }
+    def identity_of(node: dict) -> str:
+        payload = {key: value for key, value in node.items() if key != "tag"}
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    identities = {identity_of(node) for node in merged}
     for extra in extras:
-        identity = (extra.get("type"), extra.get("server"), extra.get("server_port"),
-                    extra.get("uuid"), extra.get("password"), extra.get("flow"))
+        identity = identity_of(extra)
         if identity in identities:
             continue
         node = dict(extra)
