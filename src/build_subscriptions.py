@@ -508,8 +508,8 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         outbounds.extend([
             {"type": "direct", "tag": "direct"},
             {"type": "urltest", "tag": "auto", "outbounds": server_tags,
-             "url": "https://www.gstatic.com/generate_204", "interval": "3m",
-             "tolerance": 50, "interrupt_exist_connections": True},
+             "url": "https://www.gstatic.com/generate_204", "interval": "1m",
+             "tolerance": 0, "interrupt_exist_connections": False},
             {"type": "selector", "tag": "proxy",
              "outbounds": ["auto"] + server_tags + ["direct"],
              "default": "auto", "interrupt_exist_connections": True},
