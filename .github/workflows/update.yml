@@ -35,7 +35,9 @@ jobs:
       - name: Test real tunnel and download speed
         run: python src/test_download_speed.py
         env:
-          TEST_PER_PROTOCOL: "8"
+          TEST_PER_PROTOCOL: "5"
+          SPEED_SAMPLES: "2"
+          SPEED_TEST_BYTES: "1500000"
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
