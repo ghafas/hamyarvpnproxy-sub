@@ -888,6 +888,18 @@ def main() -> None:
         (OUTPUT_DIR / f"asteriskbox-{protocol}.json").write_text(text_config, encoding="utf-8")
         asteriskbox_protocol_counts[protocol] = count
 
+    # Structural collection health; live verification is reported separately.
+    build_health = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sources": list(CHANNELS),
+        "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
+        "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
+        "duplicates_removed": {p: sum(len(per_channel[channel].get(p, [])) for channel in CHANNELS) - len(found.get(p, [])) for p in SCHEMES},
+        "max_per_protocol": MAX_PER_PROTOCOL,
+        "live_verified": False,
+    }
+    (OUTPUT_DIR / "health.json").write_text(json.dumps(build_health, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+
     # Sing-box exports are generated from the same validated canonical URI set.
     singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
     (OUTPUT_DIR / "singbox.json").write_text(singbox_text, encoding="utf-8")
