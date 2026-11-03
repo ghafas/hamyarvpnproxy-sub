@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real tunnel and download-throughput checks for a bounded sample of collected nodes."""
+"""Validate real proxy tunnels and rank nodes by repeated HTTPS download throughput."""
 from __future__ import annotations
 
 import base64
@@ -14,28 +14,30 @@ import time
 from pathlib import Path
 
 import requests
-import yaml
 
 from build_subscriptions import SCHEMES, decode_b64, protocol_of, uri_to_singbox
 
 PUBLIC = Path("public")
 SING_BOX = os.environ.get("SING_BOX_BIN", "sing-box")
-PER_PROTOCOL = int(os.environ.get("TEST_PER_PROTOCOL", "8"))
+PER_PROTOCOL = max(1, int(os.environ.get("TEST_PER_PROTOCOL", "5")))
+SAMPLES = max(2, int(os.environ.get("SPEED_SAMPLES", "2")))
+DOWNLOAD_BYTES = max(500_000, int(os.environ.get("SPEED_TEST_BYTES", "1500000")))
 DOWNLOAD_URL = os.environ.get(
-    "SPEED_TEST_URL", "https://speed.cloudflare.com/__down?bytes=2000000"
+    "SPEED_TEST_URL", f"https://speed.cloudflare.com/__down?bytes={DOWNLOAD_BYTES}"
 )
-MAX_SECONDS = 12
+MAX_SECONDS = 15
 MIN_BYTES = 256_000
+STARTUP_SECONDS = 7
 
 
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+        return int(sock.getsockname()[1])
 
 
 def load_nodes() -> dict[str, list[str]]:
-    result = {}
+    result: dict[str, list[str]] = {}
     for proto in SCHEMES:
         path = PUBLIC / f"{proto}.txt"
         if not path.exists():
@@ -45,15 +47,48 @@ def load_nodes() -> dict[str, list[str]]:
         if not raw:
             result[proto] = []
             continue
-        decoded = decode_b64(raw)
-        result[proto] = [line.strip() for line in decoded.splitlines() if line.strip()]
+        try:
+            decoded = decode_b64(raw)
+        except (ValueError, UnicodeError):
+            decoded = ""
+        result[proto] = list(dict.fromkeys(
+            line.strip() for line in decoded.splitlines() if line.strip()
+        ))
     return result
 
 
+def download_sample(port: int) -> tuple[float, int]:
+    proxy = f"http://127.0.0.1:{port}"
+    proxies = {"http": proxy, "https": proxy}
+    started = time.monotonic()
+    received = 0
+    with requests.get(
+        DOWNLOAD_URL,
+        proxies=proxies,
+        stream=True,
+        timeout=(7, MAX_SECONDS),
+        headers={"Cache-Control": "no-cache", "User-Agent": "HamyarVPNProxy-speedtest/1.0"},
+    ) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(64 * 1024):
+            if chunk:
+                received += len(chunk)
+            elapsed = time.monotonic() - started
+            if received >= DOWNLOAD_BYTES or elapsed >= MAX_SECONDS:
+                break
+    elapsed = max(time.monotonic() - started, 0.001)
+    return received * 8 / elapsed / 1_000_000, received
+
+
 def test_one(uri: str) -> dict | None:
-    outbound = uri_to_singbox(uri)
-    if not outbound:
+    try:
+        outbound = uri_to_singbox(uri)
+    except Exception as exc:
+        print(f"conversion failed ({type(exc).__name__})", flush=True)
         return None
+    if not isinstance(outbound, dict):
+        return None
+
     tag = "candidate"
     outbound["tag"] = tag
     port = free_port()
@@ -66,100 +101,129 @@ def test_one(uri: str) -> dict | None:
         "outbounds": [outbound, {"type": "direct", "tag": "direct"}],
         "route": {"final": tag, "auto_detect_interface": True},
     }
-    with tempfile.TemporaryDirectory(prefix="proxy-check-") as temp:
+
+    with tempfile.TemporaryDirectory(prefix="hamyar-proxy-check-") as temp:
         cfg = Path(temp) / "config.json"
-        cfg.write_text(json.dumps(config), encoding="utf-8")
-        check = subprocess.run(
-            [SING_BOX, "check", "-c", str(cfg)],
-            capture_output=True, text=True, timeout=8,
-        )
-        if check.returncode:
-            return None
-        proc = subprocess.Popen(
-            [SING_BOX, "run", "-c", str(cfg)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        cfg.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
         try:
-            deadline = time.monotonic() + 5
+            check = subprocess.run(
+                [SING_BOX, "check", "-c", str(cfg)],
+                capture_output=True, text=True, timeout=12,
+            )
+            if check.returncode:
+                return None
+            proc = subprocess.Popen(
+                [SING_BOX, "run", "-c", str(cfg)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+        try:
+            deadline = time.monotonic() + STARTUP_SECONDS
+            ready = False
             while time.monotonic() < deadline:
                 if proc.poll() is not None:
                     return None
                 try:
-                    with socket.create_connection(("127.0.0.1", port), timeout=.2):
+                    with socket.create_connection(("127.0.0.1", port), timeout=0.25):
+                        ready = True
                         break
                 except OSError:
-                    time.sleep(.1)
-            else:
+                    time.sleep(0.15)
+            if not ready:
                 return None
 
-            start = time.monotonic()
-            received = 0
-            proxies = {"http": f"http://127.0.0.1:{port}",
-                       "https": f"http://127.0.0.1:{port}"}
-            with requests.get(
-                DOWNLOAD_URL, proxies=proxies, stream=True, timeout=(5, MAX_SECONDS)
-            ) as response:
-                response.raise_for_status()
-                for chunk in response.iter_content(64 * 1024):
-                    if chunk:
-                        received += len(chunk)
-                    if received >= 2_000_000 or time.monotonic() - start >= MAX_SECONDS:
-                        break
-            elapsed = max(time.monotonic() - start, .001)
-            if received < MIN_BYTES:
-                return None
-            speed_mbps = received * 8 / elapsed / 1_000_000
+            speeds: list[float] = []
+            byte_counts: list[int] = []
+            for _ in range(SAMPLES):
+                speed, received = download_sample(port)
+                if received < MIN_BYTES:
+                    return None
+                speeds.append(speed)
+                byte_counts.append(received)
+
             return {
-                "uri": uri, "protocol": protocol_of(uri),
-                "bytes": received, "seconds": round(elapsed, 3),
-                "download_mbps": round(speed_mbps, 3),
+                "uri": uri,
+                "protocol": protocol_of(uri),
+                "samples_mbps": [round(v, 3) for v in speeds],
+                "download_mbps": round(statistics.median(speeds), 3),
+                "min_mbps": round(min(speeds), 3),
+                "max_mbps": round(max(speeds), 3),
+                "bytes": sum(byte_counts),
+                "samples": len(speeds),
             }
         except (requests.RequestException, OSError, subprocess.TimeoutExpired):
             return None
         finally:
             proc.terminate()
             try:
-                proc.wait(timeout=2)
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait(timeout=2)
+                proc.wait(timeout=3)
 
 
-def write_base64(path: Path, uris: list[str]) -> None:
-    raw = ("\n".join(uris) + ("\n" if uris else "")).encode()
-    path.write_text(base64.b64encode(raw).decode() + ("\n" if raw else ""), encoding="ascii")
+def write_b64(path: Path, uris: list[str]) -> None:
+    raw = ("\n".join(uris) + ("\n" if uris else "")).encode("utf-8")
+    path.write_text(
+        base64.b64encode(raw).decode("ascii") + ("\n" if raw else ""),
+        encoding="ascii",
+    )
+
+
+def write_plain(path: Path, uris: list[str]) -> None:
+    path.write_text("\n".join(uris) + ("\n" if uris else ""), encoding="utf-8")
 
 
 def main() -> None:
     if not shutil.which(SING_BOX):
         raise SystemExit(f"sing-box binary not found: {SING_BOX}")
+
     nodes = load_nodes()
-    passed = []
+    passed: list[dict] = []
     tested = 0
+    protocol_results: dict[str, list[dict]] = {}
+
     for proto in SCHEMES:
-        for uri in nodes[proto][:PER_PROTOCOL]:
+        candidates = nodes.get(proto, [])[:PER_PROTOCOL]
+        current: list[dict] = []
+        for uri in candidates:
             tested += 1
             result = test_one(uri)
             if result:
                 passed.append(result)
-            print(f"tested={tested} passed={len(passed)} protocol={proto}", flush=True)
+                current.append(result)
+            print(
+                f"tested={tested} passed={len(passed)} protocol={proto}",
+                flush=True,
+            )
+        current.sort(key=lambda item: item["download_mbps"], reverse=True)
+        protocol_results[proto] = current
+        uris = [item["uri"] for item in current]
+        write_b64(PUBLIC / f"tested-{proto}.txt", uris)
+        write_plain(PUBLIC / f"tested-{proto}-plain.txt", uris)
 
     passed.sort(key=lambda item: item["download_mbps"], reverse=True)
     tested_uris = [item["uri"] for item in passed]
-    write_base64(PUBLIC / "tested.txt", tested_uris)
     fast = [item for item in passed if item["download_mbps"] >= 5.0]
-    write_base64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
-    write_base64(PUBLIC / "top100.txt", [item["uri"] for item in passed[:100]])
+
+    write_b64(PUBLIC / "tested.txt", tested_uris)
+    write_plain(PUBLIC / "tested-plain.txt", tested_uris)
+    write_b64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
+    write_b64(PUBLIC / "top100.txt", tested_uris[:100])
 
     report = {
         "tested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "method": "Sing-box tunnel + HTTPS download throughput",
+        "method": "Sing-box tunnel with repeated HTTPS download throughput measurements",
         "download_url": DOWNLOAD_URL,
+        "samples_per_node": SAMPLES,
         "sampled_per_protocol": PER_PROTOCOL,
         "tested_count": tested,
         "passed_count": len(passed),
         "fast_threshold_mbps": 5.0,
         "results": passed,
+        "protocol_counts": {proto: len(items) for proto, items in protocol_results.items()},
     }
     (PUBLIC / "tested.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -168,19 +232,36 @@ def main() -> None:
     index = PUBLIC / "index.html"
     if index.exists():
         html = index.read_text(encoding="utf-8")
-        links = (
-            f'<h2>Real download-speed tests</h2>'
-            f'<p>{len(passed)} passed from {tested} tested candidates. '
-            f'Fast means at least 5 Mbps in this CI test run.</p>'
-            f'<a href="tested.txt">Tested ({len(passed)})</a>'
-            f'<a href="fast.txt">Fast, 5+ Mbps ({len(fast)})</a>'
-            f'<a href="top100.txt">Top 100 by measured download speed</a>'
-            f'<a href="tested.json">Test report with measured Mbps</a>'
+        marker = "<!-- REAL_SPEED_TESTS -->"
+        section = (
+            f'<section id="speed-tests"><h2>Real download-speed tests</h2>'
+            f'<p>{len(passed)} passed from {tested} candidates. Each passing node completed '
+            f'{SAMPLES} HTTPS download samples; displayed speed is the median. '
+            f'"Fast" means at least 5 Mbps in this run.</p>'
+            f'<a href="tested.txt">Tested · Base64 ({len(passed)})</a>'
+            f'<a href="tested-plain.txt">Tested · Plain text ({len(passed)})</a>'
+            f'<a href="fast.txt">Fast · 5+ Mbps ({len(fast)})</a>'
+            f'<a href="top100.txt">Top 100 by measured speed</a>'
+            f'<a href="tested.json">Detailed speed report</a><ul>'
+            + "".join(
+                f'<li><a href="tested-{p}.txt">{p.upper()} · {len(protocol_results[p])} tested</a></li>'
+                for p in SCHEMES if protocol_results[p]
+            )
+            + "</ul></section>"
         )
-        html = html.replace("</html>", links + "\n</html>")
+        if marker in html:
+            html = html.split(marker)[0] + marker + section + html.split(marker, 1)[1]
+        elif "</html>" in html:
+            html = html.replace("</html>", marker + section + "\n</html>")
+        else:
+            html += "\n" + marker + section
         index.write_text(html, encoding="utf-8")
 
-    print(f"Finished: {len(passed)}/{tested} passed; {len(fast)} at 5+ Mbps.")
+    print(
+        f"Finished: {len(passed)}/{tested} passed; "
+        f"{len(fast)} measured at 5+ Mbps.",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
