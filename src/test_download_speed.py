@@ -212,6 +212,28 @@ def main() -> None:
     write_plain(PUBLIC / "tested-plain.txt", tested_uris)
     write_b64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
     write_b64(PUBLIC / "top100.txt", tested_uris[:100])
+    write_plain(PUBLIC / "top100-plain.txt", tested_uris[:100])
+
+    # TLS profile: live-tested nodes with TLS/REALITY and no explicit bypass.
+    def tls_verified(uri: str) -> bool:
+        from urllib.parse import parse_qs, urlsplit
+        scheme = protocol_of(uri)
+        try:
+            if scheme == "vmess":
+                data = json.loads(decode_b64(uri.split("://", 1)[1].split("#", 1)[0]))
+                return str(data.get("tls", "")).lower() in {"tls", "true"}
+            query = parse_qs(urlsplit(uri).query)
+            security = (query.get("security") or [""])[-1].lower()
+            insecure = (query.get("insecure") or query.get("allowInsecure") or ["0"])[-1].lower()
+            return scheme in {"vless", "trojan", "tuic", "hysteria", "hysteria2"} and (
+                security in {"tls", "reality"} or scheme in {"trojan", "tuic", "hysteria", "hysteria2"}
+            ) and insecure not in {"1", "true", "yes"}
+        except (ValueError, TypeError, KeyError, UnicodeError):
+            return False
+
+    secure = [item for item in passed if tls_verified(item["uri"])]
+    write_b64(PUBLIC / "secure.txt", [item["uri"] for item in secure])
+    write_plain(PUBLIC / "secure-plain.txt", [item["uri"] for item in secure])
 
     report = {
         "tested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -222,6 +244,8 @@ def main() -> None:
         "tested_count": tested,
         "passed_count": len(passed),
         "fast_threshold_mbps": 5.0,
+        "secure_count": len(secure),
+        "secure_definition": "live-tested TLS/REALITY with no explicit certificate-verification bypass; not a trust guarantee",
         "results": passed,
         "protocol_counts": {proto: len(items) for proto, items in protocol_results.items()},
     }
