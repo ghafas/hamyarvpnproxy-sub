@@ -13,7 +13,7 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - All protocols except Shadowsocks (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss-plain.txt
 - Clash / Mihomo configuration: https://ghafas.github.io/hamyarvpnproxy-sub/clash.yaml
 - **Universal Sing-box JSON (recommended for Sing-box-compatible apps, including AsteriskBOX): https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json**
-- Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt
+- Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt\n- Fast configurations (measured at 5 Mbps or above): https://ghafas.github.io/hamyarvpnproxy-sub/fast.txt\n- Top 100 by measured download speed: https://ghafas.github.io/hamyarvpnproxy-sub/top100.txt\n- Latest test report with per-node Mbps: https://ghafas.github.io/hamyarvpnproxy-sub/tested.json
 
 ### Protocol-specific subscriptions (Base64)
 - [VLESS](https://ghafas.github.io/hamyarvpnproxy-sub/vless.txt)
@@ -68,13 +68,13 @@ CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "NewVPNChannel")
 
 ## Update and compatibility
 
-GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 100 unique configurations per protocol.
+GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 200 unique configurations per protocol.
 
 The combined Xray-friendly feeds omit legacy Shadowsocks CFB entries that can prevent some Xray clients from loading the subscription. The dedicated `ss.txt` feed remains available separately. The no-SS feeds remove the `ss://` protocol while retaining other protocols, including SSR.
 
 The Clash/Mihomo YAML is generated from supported protocols. Some protocol URI variants or unsupported Shadowsocks methods may be skipped if they cannot be translated safely.
 
-**Important:** `tested.txt` remains empty until a real proxy tunnel is established and actual data transfer is measured. The Clash/Mihomo AUTO group uses URL latency checks; that is not a real download-speed benchmark. Proxy availability and performance vary by network and location.
+**Real speed tests:** Each scheduled build samples up to 8 candidates per protocol, starts a real Sing-box tunnel for each candidate, and downloads data through that tunnel. Only transfers of at least 256 KB are marked tested. `fast.txt` requires at least 5 Mbps in that CI run; `top100.txt` is ranked by measured throughput. The report records the measured Mbps and test timestamp. This is a bounded sample, not an exhaustive test of every collected node. Results depend on GitHub runner location, congestion, and the test endpoint. The Clash/Mihomo AUTO and Sing-box urltest groups still use latency/reachability checks, not sustained download throughput. Proxy availability and performance vary by network and location.
 
 
 The collector reads proxy URIs from ordinary message text, inline code, multiline code blocks, and direct Telegram links.
