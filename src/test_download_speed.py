@@ -20,7 +20,7 @@ from build_subscriptions import SCHEMES, decode_b64, protocol_of, uri_to_singbox
 PUBLIC = Path("public")
 SING_BOX = os.environ.get("SING_BOX_BIN", "sing-box")
 PER_PROTOCOL = max(1, int(os.environ.get("TEST_PER_PROTOCOL", "5")))
-SAMPLES = max(2, int(os.environ.get("SPEED_SAMPLES", "2")))
+SAMPLES = max(3, int(os.environ.get("SPEED_SAMPLES", "3")))
 DOWNLOAD_BYTES = max(500_000, int(os.environ.get("SPEED_TEST_BYTES", "1500000")))
 DOWNLOAD_URL = os.environ.get(
     "SPEED_TEST_URL", f"https://speed.cloudflare.com/__down?bytes={DOWNLOAD_BYTES}"
@@ -34,6 +34,17 @@ def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def select_candidates(items: list[str], limit: int) -> list[str]:
+    """Spread a bounded test budget across the full feed, not just its first entries."""
+    unique = list(dict.fromkeys(items))
+    if len(unique) <= limit:
+        return unique
+    if limit <= 1:
+        return [unique[0]]
+    indexes = [round(i * (len(unique) - 1) / (limit - 1)) for i in range(limit)]
+    return [unique[i] for i in dict.fromkeys(indexes)]
 
 
 def load_nodes() -> dict[str, list[str]]:
@@ -143,13 +154,15 @@ def test_one(uri: str) -> dict | None:
                 speeds.append(speed)
                 byte_counts.append(received)
 
+            median_speed = statistics.median(speeds)
             return {
                 "uri": uri,
                 "protocol": protocol_of(uri),
                 "samples_mbps": [round(v, 3) for v in speeds],
-                "download_mbps": round(statistics.median(speeds), 3),
+                "download_mbps": round(median_speed, 3),
                 "min_mbps": round(min(speeds), 3),
                 "max_mbps": round(max(speeds), 3),
+                "stability_ratio": round(min(speeds) / median_speed, 3) if median_speed else 0,
                 "bytes": sum(byte_counts),
                 "samples": len(speeds),
             }
@@ -186,7 +199,7 @@ def main() -> None:
     protocol_results: dict[str, list[dict]] = {}
 
     for proto in SCHEMES:
-        candidates = nodes.get(proto, [])[:PER_PROTOCOL]
+        candidates = select_candidates(nodes.get(proto, []), PER_PROTOCOL)
         current: list[dict] = []
         for uri in candidates:
             tested += 1
@@ -241,6 +254,8 @@ def main() -> None:
         "download_url": DOWNLOAD_URL,
         "samples_per_node": SAMPLES,
         "sampled_per_protocol": PER_PROTOCOL,
+        "sampling_strategy": "evenly spaced across the full structurally valid feed",
+        "stability_metric": "minimum sample Mbps divided by median sample Mbps",
         "tested_count": tested,
         "passed_count": len(passed),
         "fast_threshold_mbps": 5.0,
