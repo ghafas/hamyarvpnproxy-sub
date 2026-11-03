@@ -30,6 +30,12 @@ jobs:
         run: pip install -r requirements.txt
       - name: Build subscriptions
         run: python src/build_subscriptions.py
+      - name: Install Sing-box for real tunnel tests
+        run: curl -fsSL https://sing-box.app/install.sh | sh
+      - name: Test real tunnel and download speed
+        run: python src/test_download_speed.py
+        env:
+          TEST_PER_PROTOCOL: "8"
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
