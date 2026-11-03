@@ -898,7 +898,7 @@ def main() -> None:
         "max_per_protocol": MAX_PER_PROTOCOL,
         "live_verified": False,
     }
-    (OUTPUT_DIR / "health.json").write_text(json.dumps(build_health, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    (OUTPUT_DIR / "health.json").write_text(json.dumps(build_health, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Sing-box exports are generated from the same validated canonical URI set.
     singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
