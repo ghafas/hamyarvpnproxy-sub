@@ -13,7 +13,12 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - All protocols except Shadowsocks (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss-plain.txt
 - Clash / Mihomo configuration: https://ghafas.github.io/hamyarvpnproxy-sub/clash.yaml
 - **Universal Sing-box JSON (recommended for Sing-box-compatible apps, including AsteriskBOX): https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json**
-- Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt\n- Fast configurations (measured at 5 Mbps or above): https://ghafas.github.io/hamyarvpnproxy-sub/fast.txt\n- Top 100 by measured download speed: https://ghafas.github.io/hamyarvpnproxy-sub/top100.txt\n- Latest test report with per-node Mbps: https://ghafas.github.io/hamyarvpnproxy-sub/tested.json
+- Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt
+- Fast configurations (measured at 5 Mbps or above): https://ghafas.github.io/hamyarvpnproxy-sub/fast.txt
+- Top 100 by measured download speed: https://ghafas.github.io/hamyarvpnproxy-sub/top100.txt
+- Latest test report with per-node Mbps and stability: https://ghafas.github.io/hamyarvpnproxy-sub/tested.json
+- TLS/REALITY-tested nodes (no explicit certificate bypass; not a trust guarantee): https://ghafas.github.io/hamyarvpnproxy-sub/secure.txt
+- Top 100 plain-text list: https://ghafas.github.io/hamyarvpnproxy-sub/top100-plain.txt
 
 ### Protocol-specific subscriptions (Base64)
 - [VLESS](https://ghafas.github.io/hamyarvpnproxy-sub/vless.txt)
@@ -74,7 +79,7 @@ The combined Xray-friendly feeds omit legacy Shadowsocks CFB entries that can pr
 
 The Clash/Mihomo YAML is generated from supported protocols. Some protocol URI variants or unsupported Shadowsocks methods may be skipped if they cannot be translated safely.
 
-**Real speed tests:** Each scheduled build samples up to 5 candidates per protocol, starts a real Sing-box tunnel for each candidate, and performs 2 HTTPS download samples through that tunnel. A node is marked tested only when both samples transfer at least 256 KB; its published speed is the median of the measured samples. `fast.txt` requires at least 5 Mbps in that CI run; `top100.txt` is ranked by measured throughput. `tested-<protocol>.txt` and `tested-<protocol>-plain.txt` provide tested nodes by protocol. The JSON report records per-sample Mbps, median speed, and test timestamp. This is a bounded sample, not an exhaustive test of every collected node. Results depend on GitHub runner location, congestion, and the test endpoint. The Clash/Mihomo AUTO and Sing-box urltest groups still use latency/reachability checks, not sustained download throughput. Proxy availability and performance vary by network and location.
+**Real speed tests:** Each scheduled build samples up to 5 candidates per protocol, starts a real Sing-box tunnel for each candidate, and performs 3 HTTPS download samples through that tunnel. A node is marked tested only when all three samples transfer at least 256 KB; its published speed is the median of the measured samples. `fast.txt` requires at least 5 Mbps in that CI run; `top100.txt` is ranked by measured throughput. `tested-<protocol>.txt` and `tested-<protocol>-plain.txt` provide tested nodes by protocol. The JSON report records per-sample Mbps, median speed, min/max speed, a stability ratio (minimum divided by median), and test timestamp. Candidates are sampled evenly across the full feed rather than always taking the first five entries of each protocol. This is a bounded sample, not an exhaustive test of every collected node. Results depend on GitHub runner location, congestion, and the test endpoint. The Clash/Mihomo AUTO and Sing-box urltest groups still use latency/reachability checks, not sustained download throughput. Proxy availability and performance vary by network and location.
 
 
 The collector reads proxy URIs from ordinary message text, inline code, multiline code blocks, and direct Telegram links.
