@@ -932,7 +932,8 @@ def main() -> None:
 <h2>Clash / Mihomo by protocol</h2>
 <ul>{"\n".join(f'<li><a href="clash-{p}.yaml">{p.upper()} ({clash_protocol_counts[p]} nodes)</a></li>' for p in clash_protocol_types)}</ul>
 <a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
-<h2>Sing-box by protocol</h2>
+<h2>Sing-box JSON subscriptions by protocol</h2>
+<p>Direct JSON links for importing a single protocol into Sing-box-compatible clients:</p>
 <ul>{singbox_links}</ul>
 <a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
