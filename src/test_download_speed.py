@@ -155,6 +155,9 @@ def test_one(uri: str) -> dict | None:
                 byte_counts.append(received)
 
             median_speed = statistics.median(speeds)
+            stability_ratio = min(speeds) / median_speed if median_speed else 0
+            # Throughput remains dominant; stability can adjust ranking by at most 15%.
+            ranking_score = median_speed * (0.85 + 0.15 * max(0.0, min(1.0, stability_ratio)))
             return {
                 "uri": uri,
                 "protocol": protocol_of(uri),
@@ -162,7 +165,8 @@ def test_one(uri: str) -> dict | None:
                 "download_mbps": round(median_speed, 3),
                 "min_mbps": round(min(speeds), 3),
                 "max_mbps": round(max(speeds), 3),
-                "stability_ratio": round(min(speeds) / median_speed, 3) if median_speed else 0,
+                "stability_ratio": round(stability_ratio, 3),
+                "ranking_score_mbps": round(ranking_score, 3),
                 "bytes": sum(byte_counts),
                 "samples": len(speeds),
             }
@@ -211,13 +215,13 @@ def main() -> None:
                 f"tested={tested} passed={len(passed)} protocol={proto}",
                 flush=True,
             )
-        current.sort(key=lambda item: item["download_mbps"], reverse=True)
+        current.sort(key=lambda item: item["ranking_score_mbps"], reverse=True)
         protocol_results[proto] = current
         uris = [item["uri"] for item in current]
         write_b64(PUBLIC / f"tested-{proto}.txt", uris)
         write_plain(PUBLIC / f"tested-{proto}-plain.txt", uris)
 
-    passed.sort(key=lambda item: item["download_mbps"], reverse=True)
+    passed.sort(key=lambda item: item["ranking_score_mbps"], reverse=True)
     tested_uris = [item["uri"] for item in passed]
     fast = [item for item in passed if item["download_mbps"] >= 5.0]
 
@@ -256,6 +260,7 @@ def main() -> None:
         "sampled_per_protocol": PER_PROTOCOL,
         "sampling_strategy": "evenly spaced across the full structurally valid feed",
         "stability_metric": "minimum sample Mbps divided by median sample Mbps",
+        "ranking_method": "median throughput multiplied by (0.85 + 0.15 * stability_ratio); raw throughput remains dominant",
         "tested_count": tested,
         "passed_count": len(passed),
         "fast_threshold_mbps": 5.0,
@@ -275,7 +280,7 @@ def main() -> None:
         section = (
             f'<section id="speed-tests"><h2>Real download-speed tests</h2>'
             f'<p>{len(passed)} passed from {tested} candidates. Each passing node completed '
-            f'{SAMPLES} HTTPS download samples; displayed speed is the median. '
+            f'{SAMPLES} HTTPS download samples; displayed speed is the median and ranking rewards stability (maximum 15% adjustment). '
             f'"Fast" means at least 5 Mbps in this run.</p>'
             f'<a href="tested.txt">Tested · Base64 ({len(passed)})</a>'
             f'<a href="tested-plain.txt">Tested · Plain text ({len(passed)})</a>'
