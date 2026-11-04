@@ -496,7 +496,29 @@ def make_asteriskbox(items: list[str], label: str) -> tuple[str, int, dict[str, 
     return encoded, len(outbounds), skipped
 
 
-def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]]:
+IR_SINGBOX_RULESET_URL = "https://raw.githubusercontent.com/farshidmousavii/iran-ip-ranges/main/dist/sing-box/iran.json"
+IR_CLASH_RULESET_URL = "https://raw.githubusercontent.com/farshidmousavii/iran-ip-ranges/main/dist/clash/iran.yaml"
+IR_XRAY_RULES_URL = "https://raw.githubusercontent.com/farshidmousavii/iran-ip-ranges/main/dist/xray/iran.json"
+
+def fetch_iran_rules(session: requests.Session) -> tuple[dict, dict, dict]:
+    result = {}
+    for key, url in (("singbox", IR_SINGBOX_RULESET_URL), ("clash", IR_CLASH_RULESET_URL), ("xray", IR_XRAY_RULES_URL)):
+        response = session.get(url, timeout=TIMEOUT)
+        response.raise_for_status()
+        result[key] = yaml.safe_load(response.text) if key == "clash" else response.json()
+    sb, clash, xray = result["singbox"], result["clash"], result["xray"]
+    if not isinstance(sb, dict) or not isinstance(sb.get("rules"), list): raise ValueError("Invalid Iran Sing-box rules")
+    if not isinstance(clash, dict) or not isinstance(clash.get("payload"), list): raise ValueError("Invalid Iran Mihomo rules")
+    if not isinstance(xray, dict) or not isinstance(xray.get("rules"), list): raise ValueError("Invalid Iran Xray rules")
+    for rule in xray["rules"]:
+        if rule.get("type") == "field":
+            rule["domain"] = list(dict.fromkeys(["domain:ir"] + rule.get("domain", [])))
+            rule["outboundTag"] = "direct"
+            break
+    else: xray["rules"].insert(0, {"type": "field", "domain": ["domain:ir"], "outboundTag": "direct"})
+    return sb, clash, xray
+
+def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, int, dict[str, int]]:
     """Standalone Android TUN config with automatic latency-based fallback.
 
     urltest measures reachability/latency only, not sustained download speed.
@@ -527,6 +549,7 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
                 {"tag": "local-dns", "type": "local"},
             ],
             "rules": [
+                {"domain_suffix": ["ir"], "server": "local-dns"},
                 {"clash_mode": "Direct", "server": "local-dns"},
                 {"clash_mode": "Global", "server": "proxy-dns"},
             ],
@@ -545,10 +568,13 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         ],
         "outbounds": outbounds,
         "route": {
+            "rule_set": [{"type": "remote", "tag": "iran-ip", "format": "source", "url": IR_SINGBOX_RULESET_URL, "update_interval": "12h"}],
             "auto_detect_interface": True,
             "default_domain_resolver": "local-dns",
             "final": final_tag,
             "rules": [
+                {"domain_suffix": ["ir"], "outbound": "direct"},
+                {"rule_set": ["iran-ip"], "outbound": "direct"},
                 {"domain": ["raw.githubusercontent.com", "www.gstatic.com",
                             "security.cloudflare-dns.com"], "action": "resolve"},
                 {"inbound": ["tun-in", "mixed-in"], "action": "sniff"},
@@ -684,6 +710,9 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; hamyarvpnproxy-sub/1.2; +https://github.com/ghafas/hamyarvpnproxy-sub)"})
+    iran_singbox_rules, iran_clash_rules, iran_xray_rules = fetch_iran_rules(session)
+    (OUTPUT_DIR / "xray-iran-routing.json").write_text(json.dumps(iran_xray_rules, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (OUTPUT_DIR / "clash-iran-rules.yaml").write_text(yaml.safe_dump(iran_clash_rules, allow_unicode=True, sort_keys=False), encoding="utf-8")
     # Collect each source independently. A busy first channel must not consume
     # the global protocol quota before the remaining channels are scanned.
     per_channel: dict[str, dict[str, list[str]]] = {}
@@ -817,12 +846,13 @@ def main() -> None:
         "log-level": "warning",
         "ipv6": True,
         "proxies": clash_nodes,
+        "rule-providers": {"iran-ip": {"type": "http", "behavior": "ipcidr", "format": "yaml", "url": IR_CLASH_RULESET_URL, "interval": 43200, "path": "./rules/iran-ip.yaml"}},
         "proxy-groups": [
             {"name": "PROXY", "type": "select", "proxies": ["AUTO"] + [n["name"] for n in clash_nodes]},
             {"name": "AUTO", "type": "url-test", "url": "https://www.gstatic.com/generate_204",
              "interval": 300, "tolerance": 100, "proxies": [n["name"] for n in clash_nodes]},
         ] if clash_nodes else [],
-        "rules": ["MATCH,PROXY"] if clash_nodes else [],
+        "rules": ["DOMAIN-SUFFIX,ir,DIRECT", "RULE-SET,iran-ip,DIRECT", "MATCH,PROXY"] if clash_nodes else ["DOMAIN-SUFFIX,ir,DIRECT", "RULE-SET,iran-ip,DIRECT"],
     }
     # Validate the final document before publishing. A malformed node or a
     # dangling group reference must never reach users as a broken subscription.
@@ -855,12 +885,13 @@ def main() -> None:
         protocol_config = {
             "mixed-port": 7890, "allow-lan": False, "mode": "rule",
             "log-level": "warning", "ipv6": True, "proxies": protocol_nodes,
+            "rule-providers": {"iran-ip": {"type": "http", "behavior": "ipcidr", "format": "yaml", "url": IR_CLASH_RULESET_URL, "interval": 43200, "path": f"./rules/iran-ip-{protocol}.yaml"}},
             "proxy-groups": [
                 {"name": "PROXY", "type": "select", "proxies": ["AUTO"] + protocol_names},
                 {"name": "AUTO", "type": "url-test", "url": "https://www.gstatic.com/generate_204",
                  "interval": 300, "tolerance": 100, "proxies": protocol_names},
             ] if protocol_nodes else [],
-            "rules": ["MATCH,PROXY"] if protocol_nodes else [],
+            "rules": ["DOMAIN-SUFFIX,ir,DIRECT", "RULE-SET,iran-ip,DIRECT", "MATCH,PROXY"] if protocol_nodes else ["DOMAIN-SUFFIX,ir,DIRECT", "RULE-SET,iran-ip,DIRECT"],
         }
         protocol_text = json.dumps(protocol_config, ensure_ascii=False, indent=2) + "\n"
         yaml.safe_load(protocol_text)
@@ -896,14 +927,14 @@ def main() -> None:
     (OUTPUT_DIR / "health.json").write_text(json.dumps(build_health, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Sing-box exports are generated from the same validated canonical URI set.
-    singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all")
+    singbox_text, singbox_count, singbox_skipped = make_singbox(singbox_items, "all", iran_singbox_rules)
     (OUTPUT_DIR / "singbox.json").write_text(singbox_text, encoding="utf-8")
     singbox_no_ss_items = [uri for uri in singbox_items if protocol_of(uri) != "ss"]
-    singbox_no_ss_text, singbox_no_ss_count, singbox_no_ss_skipped = make_singbox(singbox_no_ss_items, "no-ss")
+    singbox_no_ss_text, singbox_no_ss_count, singbox_no_ss_skipped = make_singbox(singbox_no_ss_items, "no-ss", iran_singbox_rules)
     (OUTPUT_DIR / "singbox-no-ss.json").write_text(singbox_no_ss_text, encoding="utf-8")
     singbox_protocol_counts = {}
     for protocol in SCHEMES:
-        text_config, count, skipped = make_singbox(found.get(protocol, []), protocol)
+        text_config, count, skipped = make_singbox(found.get(protocol, []), protocol, iran_singbox_rules)
         (OUTPUT_DIR / f"singbox-{protocol}.json").write_text(text_config, encoding="utf-8")
         singbox_protocol_counts[protocol] = count
 
@@ -924,6 +955,8 @@ def main() -> None:
 <p>Latest unique configurations, maximum {MAX_PER_PROTOCOL} per protocol.</p>
 <a href="all.txt">ALL protocols Base64 ({len(xray_safe_combined)})</a>\n<a href="all-plain.txt">ALL protocols plain text ({len(xray_safe_combined)})</a>\n<a href="all-no-ss.txt">ALL except Shadowsocks Base64 ({len(no_ss_combined)})</a>\n<a href="all-no-ss-plain.txt">ALL except Shadowsocks plain text ({len(no_ss_combined)})</a>
 <a href="clash.yaml">Clash / Mihomo YAML ({len(clash_nodes)} compatible nodes)</a>
+<a href="clash-iran-rules.yaml">Iran IP rule-provider for Clash / Mihomo</a>
+<a href="xray-iran-routing.json">Iran Direct routing rules for Xray / v2ray</a>
 <h2>Clash / Mihomo by protocol</h2>
 <ul>{"\n".join(f'<li><a href="clash-{p}.yaml">{p.upper()} ({clash_protocol_counts[p]} nodes)</a></li>' for p in clash_protocol_types)}</ul>
 <a href="singbox.json">Universal Sing-box JSON for Sing-box-compatible apps ({singbox_count} compatible outbounds)</a>
