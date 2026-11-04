@@ -12,6 +12,8 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - All protocols except Shadowsocks (Base64): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss.txt
 - All protocols except Shadowsocks (plain text): https://ghafas.github.io/hamyarvpnproxy-sub/all-no-ss-plain.txt
 - Clash / Mihomo configuration: https://ghafas.github.io/hamyarvpnproxy-sub/clash.yaml
+- Iran Direct routing rules for Xray / v2ray (routing snippet): https://ghafas.github.io/hamyarvpnproxy-sub/xray-iran-routing.json
+- Iran IP rule-provider for Clash / Mihomo: https://ghafas.github.io/hamyarvpnproxy-sub/clash-iran-rules.yaml
 - **Universal Sing-box JSON (recommended for Sing-box-compatible apps, including AsteriskBOX): https://ghafas.github.io/hamyarvpnproxy-sub/singbox.json**
 - Real-transfer-tested configurations: https://ghafas.github.io/hamyarvpnproxy-sub/tested.txt
 - Fast configurations (measured at 5 Mbps or above): https://ghafas.github.io/hamyarvpnproxy-sub/fast.txt
@@ -31,6 +33,10 @@ Base URL: https://ghafas.github.io/hamyarvpnproxy-sub/
 - [TUIC](https://ghafas.github.io/hamyarvpnproxy-sub/tuic.txt)
 - [WireGuard](https://ghafas.github.io/hamyarvpnproxy-sub/wireguard.txt)
 - [SOCKS](https://ghafas.github.io/hamyarvpnproxy-sub/socks.txt)
+
+## Iran Direct routing (Split Tunneling)
+
+Sing-box and Clash/Mihomo generated profiles route `.ir` domains and Iranian IPv4/IPv6 prefixes to `DIRECT`; other traffic continues through the selected proxy. The Iran IP lists are fetched from the maintained `farshidmousavii/iran-ip-ranges` project at build time and the remote rule providers refresh periodically. Xray cannot carry routing policy inside ordinary VLESS/VMess/Trojan share links, so use the separate `xray-iran-routing.json` rules in your Xray client's `routing.rules` and make sure the direct freedom outbound is tagged `direct`. These lists are based on announced/geolocated prefixes and are not a guarantee that every Iranian service is covered; some services use foreign CDNs or non-Iranian IPs. Check your banking app after enabling the rules.
 
 ## One universal Sing-box link
 
