@@ -522,22 +522,17 @@ def make_singbox(items: list[str], label: str) -> tuple[str, int, dict[str, int]
         "log": {"level": "warn"},
         "dns": {
             "servers": [
-                {"type": "local", "tag": "local-dns"},
-                {"type": "local", "tag": "direct-dns"},
-                {"type": "https", "tag": "proxy-dns", "server": "8.8.8.8",
-                 "detour": "proxy" if server_tags else "direct",
-                 "domain_resolver": "local-dns"},
+                {"tag": "proxy-dns", "type": "https", "server": "1.1.1.1",
+                 "detour": "proxy" if server_tags else "direct"},
+                {"tag": "local-dns", "type": "local"},
             ],
             "rules": [
-                {"domain_suffix": ["raw.githubusercontent.com"], "server": "local-dns"},
+                {"clash_mode": "Direct", "server": "local-dns"},
                 {"clash_mode": "Global", "server": "proxy-dns"},
-                {"clash_mode": "Direct", "server": "direct-dns"},
-                *([{"server": "proxy-dns", "source_ip_cidr": [
-                    "172.19.0.0/30", "fdfe:dcba:9876::1/126"
-                ]}] if server_tags else []),
             ],
             "final": "proxy-dns" if server_tags else "local-dns",
             "strategy": "prefer_ipv4",
+            "independent_cache": True,
         },
         "inbounds": [
             {"type": "tun", "tag": "tun-in", "interface_name": "tun0",
