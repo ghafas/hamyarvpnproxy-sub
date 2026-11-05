@@ -598,6 +598,34 @@ def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, i
         raise ValueError(f"Missing Android TUN inbound in {label}")
     return encoded, len(server_tags), skipped
 
+OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"
+
+
+def fetch_external_feed(session: requests.Session, url: str) -> list[str]:
+    """Fetch a public raw share-link feed; tolerate plain text or Base64 lists."""
+    response = session.get(url, timeout=TIMEOUT)
+    response.raise_for_status()
+    body = response.text.strip()
+    if not body:
+        return []
+    candidates = [body]
+    try:
+        decoded = decode_b64(body)
+        if decoded and any(f"{scheme}://" in decoded.lower() for scheme in SCHEMES):
+            candidates.insert(0, decoded)
+    except (ValueError, UnicodeError):
+        pass
+    text = max(candidates, key=lambda value: sum(value.lower().count(f"{scheme}://") for scheme in SCHEMES))
+    found, seen = [], set()
+    for raw in URI_RE.findall(text):
+        uri = clean_uri(raw)
+        protocol = protocol_of(uri)
+        if protocol and uri not in seen and plausible_uri(uri):
+            seen.add(uri)
+            found.append(uri)
+    return found
+
+
 def fetch_page(session: requests.Session, channel: str, before: int | None = None) -> tuple[str, list[int]]:
     params = {"before": before} if before else None
     response = session.get(f"https://t.me/s/{channel}", params=params, timeout=TIMEOUT)
@@ -753,12 +781,26 @@ def main() -> None:
         )
         print(f"Scanned @{channel}: {channel_pages} pages; {channel_counts or 'no valid configs found'}.")
 
+    # Add OpenProxyList as an independent source; Telegram collection above is unchanged.
+    try:
+        external_items = fetch_external_feed(session, OPENPROXYLIST_URL)
+        external_found: dict[str, list[str]] = defaultdict(list)
+        for uri in external_items:
+            protocol = protocol_of(uri)
+            if protocol and len(external_found[protocol]) < MAX_PER_PROTOCOL:
+                external_found[protocol].append(uri)
+        per_channel["OpenProxyList"] = external_found
+        print("Fetched OpenProxyList: " + ", ".join(f"{p}={len(v)}" for p, v in external_found.items()))
+    except requests.RequestException as exc:
+        print(f"OpenProxyList fetch failed; continuing with Telegram sources: {exc}")
+        per_channel["OpenProxyList"] = defaultdict(list)
+
     # Merge sources fairly in round-robin order, deduplicating globally and
     # enforcing the final cap only after every channel has been collected.
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     for protocol in SCHEMES:
-        source_lists = [per_channel[channel].get(protocol, []) for channel in CHANNELS]
+        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList")]
         max_source_count = max((len(items) for items in source_lists), default=0)
         for index in range(max_source_count):
             for items in source_lists:
@@ -917,7 +959,7 @@ def main() -> None:
     # Structural collection health; live verification is reported separately.
     build_health = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sources": list(CHANNELS),
+        "sources": [*CHANNELS, "OpenProxyList"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
         "duplicates_removed": {p: sum(len(per_channel[channel].get(p, [])) for channel in CHANNELS) - len(found.get(p, [])) for p in SCHEMES},
