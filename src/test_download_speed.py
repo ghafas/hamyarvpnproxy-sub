@@ -225,11 +225,20 @@ def main() -> None:
     tested_uris = [item["uri"] for item in passed]
     fast = [item for item in passed if item["download_mbps"] >= 5.0]
 
+    # Candidate list is independent of live speed-test success: take up to 100
+    # unique source nodes across all supported feed protocols.
+    candidate_uris = list(dict.fromkeys(
+        uri for proto in SCHEMES for uri in nodes.get(proto, [])
+    ))[:100]
+
     write_b64(PUBLIC / "tested.txt", tested_uris)
     write_plain(PUBLIC / "tested-plain.txt", tested_uris)
     write_b64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
+    # top100 remains the best live-tested nodes; candidates are unverified.
     write_b64(PUBLIC / "top100.txt", tested_uris[:100])
     write_plain(PUBLIC / "top100-plain.txt", tested_uris[:100])
+    write_b64(PUBLIC / "top100-candidates.txt", candidate_uris)
+    write_plain(PUBLIC / "top100-candidates-plain.txt", candidate_uris)
 
     # TLS profile: live-tested nodes with TLS/REALITY and no explicit bypass.
     def tls_verified(uri: str) -> bool:
@@ -263,6 +272,8 @@ def main() -> None:
         "ranking_method": "median throughput multiplied by (0.85 + 0.15 * stability_ratio); raw throughput remains dominant",
         "tested_count": tested,
         "passed_count": len(passed),
+        "candidate_count": len(candidate_uris),
+        "candidate_definition": "up to 100 unique source nodes across supported protocols; not live speed-tested",
         "fast_threshold_mbps": 5.0,
         "secure_count": len(secure),
         "secure_definition": "live-tested TLS/REALITY with no explicit certificate-verification bypass; not a trust guarantee",
@@ -285,7 +296,9 @@ def main() -> None:
             f'<a href="tested.txt">Tested · Base64 ({len(passed)})</a>'
             f'<a href="tested-plain.txt">Tested · Plain text ({len(passed)})</a>'
             f'<a href="fast.txt">Fast · 5+ Mbps ({len(fast)})</a>'
-            f'<a href="top100.txt">Top 100 by measured speed</a>'
+            f'<a href="top100.txt">Top 100 by measured speed ({min(100, len(tested_uris))})</a>'
+            f'<a href="top100-candidates.txt">Top 100 source candidates · Base64 ({len(candidate_uris)})</a>'
+            f'<a href="top100-candidates-plain.txt">Top 100 source candidates · Plain text ({len(candidate_uris)})</a>'
             f'<a href="tested.json">Detailed speed report</a><ul>'
             + "".join(
                 f'<li><a href="tested-{p}.txt">{p.upper()} · {len(protocol_results[p])} tested</a></li>'
