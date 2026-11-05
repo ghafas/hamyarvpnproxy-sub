@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
-MAX_PER_PROTOCOL = 200
+MAX_PER_PROTOCOL = 100
 TIMEOUT = 25
 SCHEMES = (
     "vless", "vmess", "trojan", "ss", "ssr",
@@ -598,7 +598,7 @@ def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, i
         raise ValueError(f"Missing Android TUN inbound in {label}")
     return encoded, len(server_tags), skipped
 
-OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"
+OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"\nSHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
 
 
 def fetch_external_feed(session: requests.Session, url: str) -> list[str]:
@@ -781,26 +781,31 @@ def main() -> None:
         )
         print(f"Scanned @{channel}: {channel_pages} pages; {channel_counts or 'no valid configs found'}.")
 
-    # Add OpenProxyList as an independent source; Telegram collection above is unchanged.
-    try:
-        external_items = fetch_external_feed(session, OPENPROXYLIST_URL)
-        external_found: dict[str, list[str]] = defaultdict(list)
-        for uri in external_items:
-            protocol = protocol_of(uri)
-            if protocol and len(external_found[protocol]) < MAX_PER_PROTOCOL:
-                external_found[protocol].append(uri)
-        per_channel["OpenProxyList"] = external_found
-        print("Fetched OpenProxyList: " + ", ".join(f"{p}={len(v)}" for p, v in external_found.items()))
-    except requests.RequestException as exc:
-        print(f"OpenProxyList fetch failed; continuing with Telegram sources: {exc}")
-        per_channel["OpenProxyList"] = defaultdict(list)
+    # Add public subscription feeds independently; one failed source must not
+    # prevent the other feeds from being collected.
+    for source_name, source_url in (
+        ("OpenProxyList", OPENPROXYLIST_URL),
+        ("Shadowmere", SHADOWMERE_URL),
+    ):
+        try:
+            external_items = fetch_external_feed(session, source_url)
+            external_found: dict[str, list[str]] = defaultdict(list)
+            for uri in external_items:
+                protocol = protocol_of(uri)
+                if protocol and len(external_found[protocol]) < MAX_PER_PROTOCOL:
+                    external_found[protocol].append(uri)
+            per_channel[source_name] = external_found
+            print(f"Fetched {source_name}: " + ", ".join(f"{p}={len(v)}" for p, v in external_found.items()))
+        except requests.RequestException as exc:
+            print(f"{source_name} fetch failed; continuing with other sources: {exc}")
+            per_channel[source_name] = defaultdict(list)
 
     # Merge sources fairly in round-robin order, deduplicating globally and
     # enforcing the final cap only after every channel has been collected.
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     for protocol in SCHEMES:
-        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList")]
+        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere")]
         max_source_count = max((len(items) for items in source_lists), default=0)
         for index in range(max_source_count):
             for items in source_lists:
@@ -959,10 +964,10 @@ def main() -> None:
     # Structural collection health; live verification is reported separately.
     build_health = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sources": [*CHANNELS, "OpenProxyList"],
+        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
-        "duplicates_removed": {p: sum(len(per_channel[channel].get(p, [])) for channel in CHANNELS) - len(found.get(p, [])) for p in SCHEMES},
+        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere")) - len(found.get(p, [])) for p in SCHEMES},
         "max_per_protocol": MAX_PER_PROTOCOL,
         "live_verified": False,
     }
