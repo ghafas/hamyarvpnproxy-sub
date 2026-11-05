@@ -1,6 +1,6 @@
 # HamyarVPNProxy subscriptions
 
-Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET) and [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), [@oneclickvpnkeys](https://t.me/oneclickvpnkeys), and [@VPNBaz](https://t.me/VPNBaz).
+Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET), [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), [@oneclickvpnkeys](https://t.me/oneclickvpnkeys), [@VPNBaz](https://t.me/VPNBaz), and public feeds [OpenProxyList](https://openproxylist.com/v2ray/) and [Shadowmere](https://shadowmere.xyz/api/b64sub/).
 
 ## Subscription links
 
@@ -79,7 +79,7 @@ CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "NewVPNChannel")
 
 ## Update and compatibility
 
-GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 200 unique configurations per protocol.
+GitHub Actions refreshes the subscriptions every 30 minutes and can also be started manually from the Actions tab. The collector keeps up to 100 unique configurations per protocol.
 
 The combined Xray-friendly feeds omit legacy Shadowsocks CFB entries that can prevent some Xray clients from loading the subscription. The dedicated `ss.txt` feed remains available separately. The no-SS feeds remove the `ss://` protocol while retaining other protocols, including SSR.
 
@@ -88,4 +88,4 @@ The Clash/Mihomo YAML is generated from supported protocols. Some protocol URI v
 **Real speed tests:** Each scheduled build samples up to 5 candidates per protocol, starts a real Sing-box tunnel for each candidate, and performs 3 HTTPS download samples through that tunnel. A node is marked tested only when all three samples transfer at least 256 KB; its published speed is the median of the measured samples. `fast.txt` requires at least 5 Mbps in that CI run; `top100.txt` is ranked by measured throughput. `tested-<protocol>.txt` and `tested-<protocol>-plain.txt` provide tested nodes by protocol. The JSON report records per-sample Mbps, median speed, min/max speed, a stability ratio (minimum divided by median), and test timestamp. Ranking uses median throughput multiplied by (0.85 + 0.15 × stability ratio), so download speed remains the main factor while steadier nodes receive up to a 15% adjustment. The `fast.txt` threshold still uses raw median throughput. Candidates are sampled evenly across the full feed rather than always taking the first five entries of each protocol. This is a bounded sample, not an exhaustive test of every collected node. Results depend on GitHub runner location, congestion, and the test endpoint. The Clash/Mihomo AUTO and Sing-box urltest groups still use latency/reachability checks, not sustained download throughput. Proxy availability and performance vary by network and location.
 
 
-The collector reads proxy URIs from ordinary message text, inline code, multiline code blocks, and direct Telegram links.
+The collector reads proxy URIs from ordinary message text, inline code, multiline code blocks, direct Telegram links, and Base64/plain-text public subscription feeds (OpenProxyList and Shadowmere).
