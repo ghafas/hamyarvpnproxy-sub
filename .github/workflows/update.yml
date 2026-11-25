@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
     # Run every 3 hours; bounded real-speed tests may take longer than 30 minutes.
     - cron: "7 */3 * * *"
@@ -49,6 +51,7 @@ jobs:
           path: public
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
