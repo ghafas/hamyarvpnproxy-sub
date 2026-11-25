@@ -601,6 +601,7 @@ def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, i
 OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"
 SHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
 PATTERNIHA_URL = "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt"
+KIZYAK_URL = "https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt"
 
 
 def fetch_external_feed(session: requests.Session, url: str) -> list[str]:
@@ -789,6 +790,7 @@ def main() -> None:
         ("OpenProxyList", OPENPROXYLIST_URL),
         ("Shadowmere", SHADOWMERE_URL),
         ("Patterniha", PATTERNIHA_URL),
+        ("Kizyak", KIZYAK_URL),
     ):
         try:
             external_items = fetch_external_feed(session, source_url)
@@ -808,7 +810,7 @@ def main() -> None:
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     for protocol in SCHEMES:
-        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha")]
+        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak")]
         max_source_count = max((len(items) for items in source_lists), default=0)
         for index in range(max_source_count):
             for items in source_lists:
@@ -967,10 +969,10 @@ def main() -> None:
     # Structural collection health; live verification is reported separately.
     build_health = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha"],
+        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
-        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha")) - len(found.get(p, [])) for p in SCHEMES},
+        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak")) - len(found.get(p, [])) for p in SCHEMES},
         "max_per_protocol": MAX_PER_PROTOCOL,
         "live_verified": False,
     }
