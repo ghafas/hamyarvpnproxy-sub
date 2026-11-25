@@ -827,7 +827,12 @@ def main() -> None:
                 break
 
     for protocol in SCHEMES:
-        (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(found.get(protocol, [])), encoding="ascii")
+        protocol_items = found.get(protocol, [])
+        (OUTPUT_DIR / f"{protocol}.txt").write_text(to_base64(protocol_items), encoding="ascii")
+        (OUTPUT_DIR / f"{protocol}-plain.txt").write_text(
+            "\n".join(protocol_items) + ("\n" if protocol_items else ""),
+            encoding="utf-8",
+        )
     # Xray-based clients reject legacy Shadowsocks CFB ciphers. Keep the
     # original SS-only feed intact, but omit CFB nodes from combined feeds so
     # one unsupported outbound cannot prevent the entire Xray profile starting.
@@ -997,7 +1002,10 @@ def main() -> None:
     )
 
 
-    links = "\n".join(f'<li><a href="{p}.txt">{p.upper()} ({len(found.get(p, []))})</a></li>' for p in SCHEMES)
+    links = "\n".join(
+        f'<li><a href="{p}.txt">{p.upper()} Base64 ({len(found.get(p, []))})</a> · '
+        f'<a href="{p}-plain.txt">Plain text</a></li>' for p in SCHEMES
+    )
     (OUTPUT_DIR / "index.html").write_text(
         f"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
@@ -1016,7 +1024,8 @@ def main() -> None:
 <p>Direct JSON links for importing a single protocol into Sing-box-compatible clients:</p>
 <ul>{singbox_links}</ul>
 <a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
-<a href="tested.txt">Real-transfer-tested (currently empty)</a>
+<a href="tested.txt">Real-transfer-tested · Base64 (populated after speed-test job)</a>
+<a href="tested-plain.txt">Real-transfer-tested · Plain text</a>
 <ul>{links}</ul>
 <p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a> · <a href="https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt">Kizyak</a></p>
 </html>""", encoding="utf-8")
