@@ -220,6 +220,9 @@ def main() -> None:
         uris = [item["uri"] for item in current]
         write_b64(PUBLIC / f"tested-{proto}.txt", uris)
         write_plain(PUBLIC / f"tested-{proto}-plain.txt", uris)
+        # The canonical protocol feed is live-test-only; unverified candidates
+        # remain available separately through top100-candidates.*.
+        write_b64(PUBLIC / f"{proto}.txt", uris)
 
     passed.sort(key=lambda item: item["ranking_score_mbps"], reverse=True)
     tested_uris = [item["uri"] for item in passed]
@@ -233,6 +236,21 @@ def main() -> None:
 
     write_b64(PUBLIC / "tested.txt", tested_uris)
     write_plain(PUBLIC / "tested-plain.txt", tested_uris)
+    # Make the default combined subscriptions safe-by-default: only nodes
+    # that completed all real tunnel/download samples are published here.
+    from build_subscriptions import parse_ss
+    xray_safe = []
+    for uri in tested_uris:
+        if protocol_of(uri) == "ss":
+            ss_node = parse_ss(uri)
+            if ss_node is None or ss_node.get("cipher") in {"aes-128-cfb", "aes-192-cfb", "aes-256-cfb"}:
+                continue
+        xray_safe.append(uri)
+    no_ss = [uri for uri in xray_safe if protocol_of(uri) != "ss"]
+    write_b64(PUBLIC / "all.txt", xray_safe)
+    write_plain(PUBLIC / "all-plain.txt", xray_safe)
+    write_b64(PUBLIC / "all-no-ss.txt", no_ss)
+    write_plain(PUBLIC / "all-no-ss-plain.txt", no_ss)
     write_b64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
     # top100 remains the best live-tested nodes; candidates are unverified.
     write_b64(PUBLIC / "top100.txt", tested_uris[:100])
@@ -293,8 +311,11 @@ def main() -> None:
             f'<p>{len(passed)} passed from {tested} candidates. Each passing node completed '
             f'{SAMPLES} HTTPS download samples; displayed speed is the median and ranking rewards stability (maximum 15% adjustment). '
             f'"Fast" means at least 5 Mbps in this run.</p>'
-            f'<a href="tested.txt">Tested · Base64 ({len(passed)})</a>'
-            f'<a href="tested-plain.txt">Tested · Plain text ({len(passed)})</a>'
+            f'<a href="all.txt">DEFAULT · Passed real tests · Base64 ({len(xray_safe)})</a>'
+            f'<a href="all-plain.txt">DEFAULT · Passed real tests · Plain text ({len(xray_safe)})</a>'
+            f'<a href="all-no-ss.txt">Passed tests · No Shadowsocks ({len(no_ss)})</a>'
+            f'<a href="tested.txt">All passed nodes · Base64 ({len(passed)})</a>'
+            f'<a href="tested-plain.txt">All passed nodes · Plain text ({len(passed)})</a>'
             f'<a href="fast.txt">Fast · 5+ Mbps ({len(fast)})</a>'
             f'<a href="top100.txt">Top 100 by measured speed ({min(100, len(tested_uris))})</a>'
             f'<a href="top100-candidates.txt">Top 100 source candidates · Base64 ({len(candidate_uris)})</a>'
