@@ -35,7 +35,7 @@ jobs:
       - name: Test real tunnel and download speed
         run: python src/test_download_speed.py
         env:
-          TEST_PER_PROTOCOL: "5"
+          TEST_PER_PROTOCOL: "10"
           SPEED_SAMPLES: "3"
           SPEED_TEST_BYTES: "1500000"
       - name: Configure Pages
