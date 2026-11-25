@@ -14,7 +14,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz")
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz", "surfboardv2ray")
 OUTPUT_DIR = Path("public")
 MAX_PAGES = 100
 MAX_PER_PROTOCOL = 100
@@ -599,6 +599,7 @@ def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, i
     return encoded, len(server_tags), skipped
 
 OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"\nSHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
+PATTERNIHA_URL = "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt"
 
 
 def fetch_external_feed(session: requests.Session, url: str) -> list[str]:
@@ -786,6 +787,7 @@ def main() -> None:
     for source_name, source_url in (
         ("OpenProxyList", OPENPROXYLIST_URL),
         ("Shadowmere", SHADOWMERE_URL),
+        ("Patterniha", PATTERNIHA_URL),
     ):
         try:
             external_items = fetch_external_feed(session, source_url)
@@ -805,7 +807,7 @@ def main() -> None:
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     for protocol in SCHEMES:
-        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere")]
+        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha")]
         max_source_count = max((len(items) for items in source_lists), default=0)
         for index in range(max_source_count):
             for items in source_lists:
@@ -964,10 +966,10 @@ def main() -> None:
     # Structural collection health; live verification is reported separately.
     build_health = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere"],
+        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
-        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere")) - len(found.get(p, [])) for p in SCHEMES},
+        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha")) - len(found.get(p, [])) for p in SCHEMES},
         "max_per_protocol": MAX_PER_PROTOCOL,
         "live_verified": False,
     }
@@ -1013,7 +1015,7 @@ def main() -> None:
 <a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
-<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
