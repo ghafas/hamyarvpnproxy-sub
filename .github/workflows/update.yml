@@ -4,8 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
-    - cron: "7,37 * * * *"
+    # Run every 3 hours; bounded real-speed tests may take longer than 30 minutes.
+    - cron: "7 */3 * * *"
 
 permissions:
   contents: read
@@ -14,11 +17,13 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Do not cancel a long-running build/test job when another schedule fires.
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +51,7 @@ jobs:
           path: public
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
