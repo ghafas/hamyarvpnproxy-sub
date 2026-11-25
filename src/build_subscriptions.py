@@ -598,7 +598,8 @@ def make_singbox(items: list[str], label: str, iran_rules: dict) -> tuple[str, i
         raise ValueError(f"Missing Android TUN inbound in {label}")
     return encoded, len(server_tags), skipped
 
-OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"\nSHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
+OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt"
+SHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
 PATTERNIHA_URL = "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt"
 
 
