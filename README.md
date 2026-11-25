@@ -1,6 +1,6 @@
 # HamyarVPNProxy subscriptions
 
-Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET), [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), [@oneclickvpnkeys](https://t.me/oneclickvpnkeys), [@VPNBaz](https://t.me/VPNBaz), and public feeds [OpenProxyList](https://openproxylist.com/v2ray/) and [Shadowmere](https://shadowmere.xyz/api/b64sub/).
+Automatically collect and publish proxy configurations from the public Telegram channels [@SOSkeyNET](https://t.me/SOSkeyNET), [@meliproxyy](https://t.me/meliproxyy), [@persianvpnhub](https://t.me/persianvpnhub), [@oneclickvpnkeys](https://t.me/oneclickvpnkeys), [@VPNBaz](https://t.me/VPNBaz), [@surfboardv2ray](https://t.me/surfboardv2ray), and public feeds [OpenProxyList](https://raw.githubusercontent.com/roosterkid/openproxylist/main/V2RAY_RAW.txt), [Shadowmere](https://shadowmere.xyz/api/b64sub/), and [Patterniha](https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt).
 
 ## Subscription links
 
@@ -58,7 +58,7 @@ To add a new public Telegram channel to the collector:
 2. Find the `CHANNELS` line near the top of the file. It currently looks like this:
 
 ```python
-CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz")
+CHANNELS = ("SOSkeyNET", "meliproxyy", "persianvpnhub", "oneclickvpnkeys", "VPNBaz", "surfboardv2ray")
 ```
 
 3. Add the channel's username inside the parentheses, without `@`, and put it in quotation marks. Separate names with commas. For example, to add `@NewVPNChannel`:
