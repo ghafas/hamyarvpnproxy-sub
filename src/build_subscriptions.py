@@ -1018,7 +1018,7 @@ def main() -> None:
 <a href="singbox-no-ss.json">Sing-box without Shadowsocks ({singbox_no_ss_count} compatible outbounds)</a>
 <a href="tested.txt">Real-transfer-tested (currently empty)</a>
 <ul>{links}</ul>
-<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a> · <a href="https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt">Kizyak</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
