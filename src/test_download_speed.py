@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate real proxy tunnels and rank nodes by repeated HTTPS download throughput."""
+"""Check real Sing-box tunnel connectivity; publish passing nodes separately."""
 from __future__ import annotations
 
 import base64
@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import socket
-import statistics
 import subprocess
 import tempfile
 import time
@@ -20,13 +19,8 @@ from build_subscriptions import SCHEMES, decode_b64, protocol_of, uri_to_singbox
 PUBLIC = Path("public")
 SING_BOX = os.environ.get("SING_BOX_BIN", "sing-box")
 PER_PROTOCOL = max(1, int(os.environ.get("TEST_PER_PROTOCOL", "5")))
-SAMPLES = max(3, int(os.environ.get("SPEED_SAMPLES", "3")))
-DOWNLOAD_BYTES = max(500_000, int(os.environ.get("SPEED_TEST_BYTES", "1500000")))
-DOWNLOAD_URL = os.environ.get(
-    "SPEED_TEST_URL", f"https://speed.cloudflare.com/__down?bytes={DOWNLOAD_BYTES}"
-)
-MAX_SECONDS = 15
-MIN_BYTES = 256_000
+CONNECTIVITY_URL = os.environ.get("CONNECTIVITY_URL", "https://www.gstatic.com/generate_204")
+CONNECT_TIMEOUT = 12
 STARTUP_SECONDS = 7
 
 
@@ -68,30 +62,8 @@ def load_nodes() -> dict[str, list[str]]:
     return result
 
 
-def download_sample(port: int) -> tuple[float, int]:
-    proxy = f"http://127.0.0.1:{port}"
-    proxies = {"http": proxy, "https": proxy}
-    started = time.monotonic()
-    received = 0
-    with requests.get(
-        DOWNLOAD_URL,
-        proxies=proxies,
-        stream=True,
-        timeout=(7, MAX_SECONDS),
-        headers={"Cache-Control": "no-cache", "User-Agent": "HamyarVPNProxy-speedtest/1.0"},
-    ) as response:
-        response.raise_for_status()
-        for chunk in response.iter_content(64 * 1024):
-            if chunk:
-                received += len(chunk)
-            elapsed = time.monotonic() - started
-            if received >= DOWNLOAD_BYTES or elapsed >= MAX_SECONDS:
-                break
-    elapsed = max(time.monotonic() - started, 0.001)
-    return received * 8 / elapsed / 1_000_000, received
-
-
 def test_one(uri: str) -> dict | None:
+    """Return a result only after HTTPS succeeds through the running proxy tunnel."""
     try:
         outbound = uri_to_singbox(uri)
     except Exception as exc:
@@ -145,30 +117,22 @@ def test_one(uri: str) -> dict | None:
             if not ready:
                 return None
 
-            speeds: list[float] = []
-            byte_counts: list[int] = []
-            for _ in range(SAMPLES):
-                speed, received = download_sample(port)
-                if received < MIN_BYTES:
-                    return None
-                speeds.append(speed)
-                byte_counts.append(received)
-
-            median_speed = statistics.median(speeds)
-            stability_ratio = min(speeds) / median_speed if median_speed else 0
-            # Throughput remains dominant; stability can adjust ranking by at most 15%.
-            ranking_score = median_speed * (0.85 + 0.15 * max(0.0, min(1.0, stability_ratio)))
+            started = time.monotonic()
+            response = requests.get(
+                CONNECTIVITY_URL,
+                proxies={"http": f"http://127.0.0.1:{port}", "https": f"http://127.0.0.1:{port}"},
+                timeout=(7, CONNECT_TIMEOUT),
+                headers={"Cache-Control": "no-cache", "User-Agent": "HamyarVPNProxy-connectivity/1.0"},
+            )
+            elapsed_ms = round((time.monotonic() - started) * 1000)
+            if response.status_code not in (200, 204):
+                return None
             return {
                 "uri": uri,
                 "protocol": protocol_of(uri),
-                "samples_mbps": [round(v, 3) for v in speeds],
-                "download_mbps": round(median_speed, 3),
-                "min_mbps": round(min(speeds), 3),
-                "max_mbps": round(max(speeds), 3),
-                "stability_ratio": round(stability_ratio, 3),
-                "ranking_score_mbps": round(ranking_score, 3),
-                "bytes": sum(byte_counts),
-                "samples": len(speeds),
+                "connectivity": "passed",
+                "http_status": response.status_code,
+                "latency_ms": elapsed_ms,
             }
         except (requests.RequestException, OSError, subprocess.TimeoutExpired):
             return None
@@ -215,30 +179,21 @@ def main() -> None:
                 f"tested={tested} passed={len(passed)} protocol={proto}",
                 flush=True,
             )
-        current.sort(key=lambda item: item["ranking_score_mbps"], reverse=True)
+        current.sort(key=lambda item: item["latency_ms"])
         protocol_results[proto] = current
         uris = [item["uri"] for item in current]
         write_b64(PUBLIC / f"tested-{proto}.txt", uris)
         write_plain(PUBLIC / f"tested-{proto}-plain.txt", uris)
-        # Never overwrite the canonical source feed. The full structurally valid
-        # candidates remain in <protocol>.txt and <protocol>-plain.txt.
-        # Live-tested results are published only under tested-<protocol>.*.
+        # Candidate protocol feeds are never overwritten by this live check.
 
-    passed.sort(key=lambda item: item["ranking_score_mbps"], reverse=True)
+    passed.sort(key=lambda item: item["latency_ms"])
     tested_uris = [item["uri"] for item in passed]
-    fast = [item for item in passed if item["download_mbps"] >= 5.0]
-
-    # Candidate list is independent of live speed-test success: take up to 100
-    # unique source nodes across all supported feed protocols.
     candidate_uris = list(dict.fromkeys(
         uri for proto in SCHEMES for uri in nodes.get(proto, [])
     ))[:100]
 
     write_b64(PUBLIC / "tested.txt", tested_uris)
     write_plain(PUBLIC / "tested-plain.txt", tested_uris)
-    # Keep all.txt and all-plain.txt as the complete source-candidate feeds
-    # generated by build_subscriptions.py. Real-tested combined nodes have
-    # separate stable URLs and can never shrink or replace the candidate list.
     from build_subscriptions import parse_ss
     xray_safe = []
     for uri in tested_uris:
@@ -252,14 +207,9 @@ def main() -> None:
     write_plain(PUBLIC / "tested-xray-safe-plain.txt", xray_safe)
     write_b64(PUBLIC / "tested-no-ss.txt", no_ss)
     write_plain(PUBLIC / "tested-no-ss-plain.txt", no_ss)
-    write_b64(PUBLIC / "fast.txt", [item["uri"] for item in fast])
-    # top100 remains the best live-tested nodes; candidates are unverified.
-    write_b64(PUBLIC / "top100.txt", tested_uris[:100])
-    write_plain(PUBLIC / "top100-plain.txt", tested_uris[:100])
     write_b64(PUBLIC / "top100-candidates.txt", candidate_uris)
     write_plain(PUBLIC / "top100-candidates-plain.txt", candidate_uris)
 
-    # TLS profile: live-tested nodes with TLS/REALITY and no explicit bypass.
     def tls_verified(uri: str) -> bool:
         from urllib.parse import parse_qs, urlsplit
         scheme = protocol_of(uri)
@@ -282,20 +232,17 @@ def main() -> None:
 
     report = {
         "tested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "method": "Sing-box tunnel with repeated HTTPS download throughput measurements",
-        "download_url": DOWNLOAD_URL,
-        "samples_per_node": SAMPLES,
+        "method": "Sing-box tunnel followed by a normal HTTPS connectivity request",
+        "connectivity_url": CONNECTIVITY_URL,
+        "success_rule": "HTTP status 200 or 204 received through the proxy tunnel",
         "sampled_per_protocol": PER_PROTOCOL,
-        "sampling_strategy": "evenly spaced across the full structurally valid feed",
-        "stability_metric": "minimum sample Mbps divided by median sample Mbps",
-        "ranking_method": "median throughput multiplied by (0.85 + 0.15 * stability_ratio); raw throughput remains dominant",
+        "sampling_strategy": "evenly spaced across each full structurally valid protocol feed",
         "tested_count": tested,
         "passed_count": len(passed),
         "candidate_count": len(candidate_uris),
-        "candidate_definition": "up to 100 unique source nodes across supported protocols; not live speed-tested",
-        "fast_threshold_mbps": 5.0,
+        "candidate_definition": "up to 100 source candidates shown separately; not used to filter canonical feeds",
         "secure_count": len(secure),
-        "secure_definition": "live-tested TLS/REALITY with no explicit certificate-verification bypass; not a trust guarantee",
+        "secure_definition": "connectivity-tested TLS/REALITY with no explicit certificate-verification bypass; not a trust guarantee",
         "results": passed,
         "protocol_counts": {proto: len(items) for proto, items in protocol_results.items()},
     }
@@ -309,40 +256,38 @@ def main() -> None:
         marker = "<!-- REAL_SPEED_TESTS -->"
         section = (
             f'<section id="speed-tests"><h2>Real download-speed tests</h2>'
-            f'<p>{len(passed)} passed from {tested} sampled candidates. Original protocol feeds and ALL subscriptions remain complete source-candidate lists and are never replaced by this limited test. '
-            f'Each passing node completed {SAMPLES} HTTPS download samples; displayed speed is the median and ranking rewards stability (maximum 15% adjustment). '
-            f'"Fast" means at least 5 Mbps in this run.</p>'
-            f'<a href="all.txt">ALL source candidates · Base64 (unchanged by tests)</a>'
-            f'<a href="all-plain.txt">ALL source candidates · Plain text (unchanged by tests)</a>'
-            f'<a href="tested-xray-safe.txt">Real-tested · Xray-safe · Base64 ({len(xray_safe)})</a>'
-            f'<a href="tested-xray-safe-plain.txt">Real-tested · Xray-safe · Plain text ({len(xray_safe)})</a>'
-            f'<a href="tested-no-ss.txt">Real-tested · No Shadowsocks ({len(no_ss)})</a>'
-            f'<a href="tested.txt">All passed nodes · Base64 ({len(passed)})</a>'
-            f'<a href="tested-plain.txt">All passed nodes · Plain text ({len(passed)})</a>'
-            f'<a href="fast.txt">Fast · 5+ Mbps ({len(fast)})</a>'
-            f'<a href="top100.txt">Top 100 by measured speed ({min(100, len(tested_uris))})</a>'
-            f'<a href="top100-candidates.txt">Top 100 source candidates · Base64 ({len(candidate_uris)})</a>'
-            f'<a href="top100-candidates-plain.txt">Top 100 source candidates · Plain text ({len(candidate_uris)})</a>'
-            f'<a href="tested.json">Detailed speed report</a><ul>'
+            f'<p>Real connection check: {len(passed)} passed from {tested} sampled candidates. '
+            f'Each passing node completed a normal HTTPS request through its own Sing-box tunnel; '
+            f'only HTTP 200/204 counts as success. Latency is informational and is not a download-speed measurement. '
+            f'Canonical ALL and per-protocol source feeds remain unchanged and include candidates whether or not they pass.</p>'
+            f'<a href="all.txt">ALL source candidates · Base64 (unchanged)</a>'
+            f'<a href="all-plain.txt">ALL source candidates · Plain text (unchanged)</a>'
+            f'<a href="tested-xray-safe.txt">Connection-tested · Xray-safe · Base64 ({len(xray_safe)})</a>'
+            f'<a href="tested-xray-safe-plain.txt">Connection-tested · Xray-safe · Plain text ({len(xray_safe)})</a>'
+            f'<a href="tested-no-ss.txt">Connection-tested · No Shadowsocks ({len(no_ss)})</a>'
+            f'<a href="tested.txt">All connection-passed nodes · Base64 ({len(passed)})</a>'
+            f'<a href="tested-plain.txt">All connection-passed nodes · Plain text ({len(passed)})</a>'
+            f'<a href="tested.json">Connection-check report</a><ul>'
             + "".join(
-                f'<li><a href="tested-{p}.txt">{p.upper()} · {len(protocol_results[p])} tested</a></li>'
+                f'<li><a href="tested-{p}.txt">{p.upper()} · {len(protocol_results[p])} passed</a> '
+                f'(<a href="tested-{p}-plain.txt">plain</a>)</li>'
                 for p in SCHEMES if protocol_results[p]
             )
             + "</ul></section>"
         )
         if marker in html:
-            html = html.split(marker)[0] + marker + section + html.split(marker, 1)[1]
+            before, after = html.split(marker, 1)
+            if "</section>" in after:
+                after = after[after.index("</section>") + len("</section>"):]
+            html = before + marker + section + after
         elif "</html>" in html:
             html = html.replace("</html>", marker + section + "\n</html>")
         else:
             html += "\n" + marker + section
         index.write_text(html, encoding="utf-8")
 
-    print(
-        f"Finished: {len(passed)}/{tested} passed; "
-        f"{len(fast)} measured at 5+ Mbps.",
-        flush=True,
-    )
+    print(f"Finished connectivity check: {len(passed)}/{tested} passed.", flush=True)
+
 
 
 if __name__ == "__main__":
