@@ -978,7 +978,7 @@ def main() -> None:
     # Structural collection health; live verification is reported separately.
     build_health = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak"],
+        "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak", "XrayConfigToolkit", "NiREvilSSTime"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
         "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak", "XrayConfigToolkit", "NiREvilSSTime")) - len(found.get(p, [])) for p in SCHEMES},
