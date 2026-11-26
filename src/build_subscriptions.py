@@ -602,6 +602,8 @@ OPENPROXYLIST_URL = "https://raw.githubusercontent.com/roosterkid/openproxylist/
 SHADOWMERE_URL = "https://shadowmere.xyz/api/b64sub/"
 PATTERNIHA_URL = "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt"
 KIZYAK_URL = "https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt"
+XRAY_CONFIG_TOOLKIT_URL = "https://raw.githubusercontent.com/wuqb2i4f/xray-config-toolkit/main/output/base64/mix-uri"
+NIREVIL_SSTIME_URL = "https://raw.githubusercontent.com/NiREvil/vless/main/sub/SSTime"
 
 
 def fetch_external_feed(session: requests.Session, url: str) -> list[str]:
@@ -791,6 +793,8 @@ def main() -> None:
         ("Shadowmere", SHADOWMERE_URL),
         ("Patterniha", PATTERNIHA_URL),
         ("Kizyak", KIZYAK_URL),
+        ("XrayConfigToolkit", XRAY_CONFIG_TOOLKIT_URL),
+        ("NiREvilSSTime", NIREVIL_SSTIME_URL),
     ):
         try:
             external_items = fetch_external_feed(session, source_url)
@@ -810,7 +814,7 @@ def main() -> None:
     found: dict[str, list[str]] = defaultdict(list)
     seen: dict[str, set[str]] = defaultdict(set)
     for protocol in SCHEMES:
-        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak")]
+        source_lists = [per_channel[channel].get(protocol, []) for channel in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak", "XrayConfigToolkit", "NiREvilSSTime")]
         max_source_count = max((len(items) for items in source_lists), default=0)
         for index in range(max_source_count):
             for items in source_lists:
@@ -977,7 +981,7 @@ def main() -> None:
         "sources": [*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak"],
         "protocol_counts": {p: len(found.get(p, [])) for p in SCHEMES},
         "total_unique_structurally_valid": sum(len(found.get(p, [])) for p in SCHEMES),
-        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak")) - len(found.get(p, [])) for p in SCHEMES},
+        "duplicates_removed": {p: sum(len(per_channel[source].get(p, [])) for source in (*CHANNELS, "OpenProxyList", "Shadowmere", "Patterniha", "Kizyak", "XrayConfigToolkit", "NiREvilSSTime")) - len(found.get(p, [])) for p in SCHEMES},
         "max_per_protocol": MAX_PER_PROTOCOL,
         "live_verified": False,
     }
@@ -1027,7 +1031,7 @@ def main() -> None:
 <a href="tested.txt">Real-transfer-tested · Base64 (populated after speed-test job)</a>
 <a href="tested-plain.txt">Real-transfer-tested · Plain text</a>
 <ul>{links}</ul>
-<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a> · <a href="https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt">Kizyak</a></p>
+<p>Sources: <a href="https://t.me/SOSkeyNET">@SOSkeyNET</a> · <a href="https://t.me/meliproxyy">@meliproxyy</a> · <a href="https://t.me/persianvpnhub">@persianvpnhub</a> · <a href="https://t.me/oneclickvpnkeys">@oneclickvpnkeys</a> · <a href="https://t.me/VPNBaz">@VPNBaz</a> · <a href="https://t.me/surfboardv2ray">@surfboardv2ray</a> · <a href="https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt">Patterniha</a> · <a href="https://raw.githubusercontent.com/Maskkost93/kizyak-vpn-4.0/refs/heads/main/kizyakbeta8.txt">Kizyak</a> · <a href="https://raw.githubusercontent.com/wuqb2i4f/xray-config-toolkit/main/output/base64/mix-uri">Xray Config Toolkit</a> · <a href="https://raw.githubusercontent.com/NiREvil/vless/main/sub/SSTime">NiREvil SSTime</a></p>
 </html>""", encoding="utf-8")
     counts = ", ".join(f"{p}={len(found.get(p, []))}" for p in SCHEMES)
     skipped = ", ".join(f"{p}={n}" for p, n in sorted(clash_skipped.items()) if n)
